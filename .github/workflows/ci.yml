@@ -5,6 +5,11 @@ on:
     branches: [main, master]
   pull_request:
 
+# Least privilege: CI only reads the repository (checkout). No job pushes, comments,
+# or publishes, so no write scopes are granted.
+permissions:
+  contents: read
+
 jobs:
   verify:
     name: Lint, typecheck, test, build
@@ -19,6 +24,7 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm run format:check
       - run: pnpm run lint
       - run: pnpm run typecheck
       - run: pnpm run test

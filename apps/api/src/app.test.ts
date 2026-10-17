@@ -37,3 +37,24 @@ describe('health endpoints', () => {
     expect(res.headers['x-request-id']).toBe('abc-123');
   });
 });
+
+describe('error handling', () => {
+  it('returns a safe 404 for unknown routes', async () => {
+    const res = await request(testApp()).get('/does-not-exist');
+    expect(res.status).toBe(404);
+    expect(res.body.error.message).toBe('Not Found');
+  });
+
+  it('forwards async route failures to a safe 500 without leaking details', async () => {
+    const secret = 'SENSITIVE-connect-ECONNREFUSED-10.0.0.5:3306';
+    const res = await request(
+      testApp(async () => {
+        throw new Error(secret);
+      }),
+    ).get('/health/ready');
+    expect(res.status).toBe(500);
+    expect(res.body.error.message).toBe('Internal Server Error');
+    // The thrown detail must never reach the client.
+    expect(JSON.stringify(res.body)).not.toContain(secret);
+  });
+});

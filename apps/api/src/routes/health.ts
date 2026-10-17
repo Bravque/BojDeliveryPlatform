@@ -1,4 +1,5 @@
 import express, { type Router } from 'express';
+import { asyncHandler } from '../middleware/error';
 
 export interface HealthDeps {
   version: string;
@@ -19,18 +20,21 @@ export function healthRouter(deps: HealthDeps): Router {
     });
   });
 
-  router.get('/health/ready', async (_req, res) => {
-    if (!deps.checkReadiness) {
-      res.json({ status: 'ok', checks: {} });
-      return;
-    }
-    const checks = await deps.checkReadiness();
-    const healthy = Object.values(checks).every(Boolean);
-    res.status(healthy ? 200 : 503).json({
-      status: healthy ? 'ok' : 'degraded',
-      checks,
-    });
-  });
+  router.get(
+    '/health/ready',
+    asyncHandler(async (_req, res) => {
+      if (!deps.checkReadiness) {
+        res.json({ status: 'ok', checks: {} });
+        return;
+      }
+      const checks = await deps.checkReadiness();
+      const healthy = Object.values(checks).every(Boolean);
+      res.status(healthy ? 200 : 503).json({
+        status: healthy ? 'ok' : 'degraded',
+        checks,
+      });
+    }),
+  );
 
   return router;
 }

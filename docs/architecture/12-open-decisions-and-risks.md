@@ -16,12 +16,12 @@
 | D4 | **Who funds promotions & delivery discounts** (platform vs. merchant) | Determines ledger split on capture | Platform-funded promos | Phase 4 |
 | D5 | **Rider economics**: is rider fee = delivery fee, or a separate rate; who keeps margin | Rider payouts + unit economics | Separate rider-rate; platform keeps margin | Phase 5/7 |
 | D6 | **Payment timing**: payment-first (refund on reject) vs. accept-first (pay after) | Refund volume vs. unpaid-work risk | Payment-first + fast auto-refund | Phase 4 |
-| D7 | **Proof of delivery** method (OTP code / photo / signature / none) | Dispute handling, fraud | OTP code to customer, entered by rider | Phase 5 |
+| D7 | **Proof of delivery** method (PIN / photo / signature / none) | Dispute handling, fraud | **Resolved (D7):** customer delivery **PIN** (default), entered by rider; photo optional | Phase 5 |
 | D8 | **Auth method** for customers (phone-OTP only vs. +password) | UX, security, SMS cost | Phone-OTP for customer/rider; password for dashboards | Phase 1 |
 | D9 | **Cancellation & refund policy** (windows, fees, no-refund cases) | Legal + ledger + UX | Free cancel pre-accept; post-accept case-by-case via ops | Phase 4 |
-| D10 | **Merchant accept SLA** and **payment retry window** values | Timeout behavior | 5 min accept SLA; 10 min pay window | Phase 3/4 |
-| D11 | **Maps provider**: Google Maps vs. Mapbox | Cost, quota, coverage in KE | Decide on cost/coverage; haversine fallback regardless | Phase 3/5 |
-| D12 | **SMS/OTP provider** (Africa's Talking, Twilio, etc.) | Deliverability in KE, cost | Africa's Talking (strong KE presence) | Phase 1 |
+| D10 | **Merchant accept SLA** and **payment retry window** values | Timeout behavior | **Resolved (D10):** 3 min accept SLA; 2 min pay window (configurable) | Phase 3/4 |
+| D11 | **Maps provider**: Google Maps vs. Mapbox | Cost, quota, coverage in KE | **Resolved (D11):** Google Maps (initial), behind a provider interface; haversine fallback regardless | Phase 3/5 |
+| D12 | **SMS/OTP provider** (Africa's Talking, TalkSasa, etc.) | Deliverability in KE, cost | **Resolved (D12):** evaluate Africa's Talking + TalkSasa, behind a notification interface | Phase 1 |
 | D13 | **Settlement cadence** (daily/weekly) and payout rails (M-Pesa B2C vs. bank) | Cash flow, fees | Weekly settlement; M-Pesa B2C payouts | Phase 7 |
 | D14 | **Cloud/hosting provider** and region | DR, latency, cost | Managed MySQL+Redis provider near KE/EU; single region at launch | Phase 0/8 |
 | D15 | **Financial-record retention period** (KRA/DPA) | Backup retention, deletion policy | Confirm with Finance/Legal (often ~7 yrs tax) | Phase 8 |
@@ -46,9 +46,10 @@
 - **Microservices now would hurt.** A modular monolith keeps money + orders in one
   transactional DB; premature service splits create distributed-transaction pain. Extract
   later only under real scaling/ownership pressure.
-- **Prisma vs. Knex.** We need robust `SELECT … FOR UPDATE`, explicit transactions, and raw
-  SQL for ledger/stock. Leaning Knex (raw control) unless the team strongly prefers Prisma;
-  flagged as a technical decision for Phase 0.
+- **Prisma vs. Knex — RESOLVED (ADR-0001): Knex.** We need robust `SELECT … FOR UPDATE`,
+  explicit transactions, and raw SQL for ledger/stock/spatial; Knex gives that raw control
+  with hand-authored, reviewable migrations. See
+  `decisions/0001-data-access-knex-over-prisma.md`.
 - **Expo managed workflow limits.** Background location and some native modules may require
   config plugins / dev builds. Validate rider background-location feasibility early (Phase 5
   risk).

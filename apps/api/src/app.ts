@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import express, { type Express } from 'express';
 import pinoHttp from 'pino-http';
+import { errorHandler, notFoundHandler } from './middleware/error';
 import type { Logger } from './platform/logger';
 import { healthRouter, type HealthDeps } from './routes/health';
 
@@ -30,6 +31,10 @@ export function createApp(deps: AppDeps): Express {
   );
 
   app.use(healthRouter({ version: deps.version, checkReadiness: deps.checkReadiness }));
+
+  // Unmatched routes -> 404, then the centralized error handler (must be mounted last).
+  app.use(notFoundHandler);
+  app.use(errorHandler);
 
   return app;
 }
