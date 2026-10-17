@@ -1,0 +1,37 @@
+{
+  "name": "boj-delivery-platform",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Multi-category delivery platform for the Kenyan market (Migori launch).",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20.11",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "dev": "turbo run dev",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "clean": "turbo run clean",
+    "verify": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build",
+    "db:migrate": "pnpm --filter @boj/api run db:migrate",
+    "db:rollback": "pnpm --filter @boj/api run db:rollback",
+    "db:make": "pnpm --filter @boj/api run db:make",
+    "db:status": "pnpm --filter @boj/api run db:status",
+    "db:seed": "pnpm --filter @boj/api run db:seed"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.13.0",
+    "eslint": "^9.13.0",
+    "globals": "^15.11.0",
+    "prettier": "^3.3.3",
+    "turbo": "^2.2.3",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.10.0"
+  }
+}
