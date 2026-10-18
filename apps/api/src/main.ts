@@ -7,6 +7,8 @@ import { createSessionService } from './auth/session-service';
 import { MockSmsProvider } from './auth/sms/mock';
 import { createUserService } from './auth/user-service';
 import { createApp } from './app';
+import { createKnexBrowseRepo } from './browse/repo';
+import { createBrowseService } from './browse/service';
 import { createCatalogueService } from './catalogue/catalogue-service';
 import { createKnexCatalogueRepo } from './catalogue/repo';
 import { createMerchantService } from './merchant/merchant-service';
@@ -49,12 +51,17 @@ function main(): void {
     requireAuth: auth.requireAuth,
   };
 
+  const browse = {
+    browseService: createBrowseService({ repo: createKnexBrowseRepo(db) }),
+  };
+
   const app = createApp({
     logger,
     version: VERSION,
     checkReadiness: async () => ({ db: await checkDbHealth(db) }),
     auth,
     merchant,
+    browse,
   });
 
   const server = app.listen(env.PORT, () => {

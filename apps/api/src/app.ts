@@ -6,6 +6,7 @@ import type { Logger } from './platform/logger';
 import { merchantAdminRouter, type MerchantModule } from './routes/admin-merchants';
 import { adminRouter } from './routes/admin';
 import { authRouter, type AuthModule } from './routes/auth';
+import { browseRouter, type BrowseModule } from './routes/browse';
 import { healthRouter, type HealthDeps } from './routes/health';
 import { merchantRouter } from './routes/merchant';
 
@@ -17,6 +18,8 @@ export interface AppDeps {
   auth?: AuthModule;
   /** When provided, mounts the `/api/v1` merchant endpoints. */
   merchant?: MerchantModule;
+  /** When provided, mounts the public `/api/v1` catalogue-browse endpoints (no auth). */
+  browse?: BrowseModule;
 }
 
 /** Build the Express application. Pure factory — no network/DB side effects. */
@@ -40,7 +43,7 @@ export function createApp(deps: AppDeps): Express {
 
   app.use(healthRouter({ version: deps.version, checkReadiness: deps.checkReadiness }));
 
-  if (deps.auth || deps.merchant) {
+  if (deps.auth || deps.merchant || deps.browse) {
     const apiV1 = express.Router();
     if (deps.auth) {
       apiV1.use(authRouter(deps.auth));
@@ -49,6 +52,9 @@ export function createApp(deps: AppDeps): Express {
     if (deps.merchant) {
       apiV1.use(merchantAdminRouter(deps.merchant.merchantService, deps.merchant.requireAuth));
       apiV1.use(merchantRouter(deps.merchant.catalogueService, deps.merchant.requireAuth));
+    }
+    if (deps.browse) {
+      apiV1.use(browseRouter(deps.browse.browseService));
     }
     app.use('/api/v1', apiV1);
   }
