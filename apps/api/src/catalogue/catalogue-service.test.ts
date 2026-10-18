@@ -4,6 +4,9 @@ import type {
   CatalogueRepo,
   CategoryRecord,
   MerchantContext,
+  OptionGroupRecord,
+  OptionRecord,
+  OwnedRef,
   ProductPatch,
   ProductRecord,
 } from './repo';
@@ -16,8 +19,12 @@ class FakeCatalogueRepo implements CatalogueRepo {
     merchantId: number;
     patch: { isOpen?: boolean; prepMinutes?: number };
   }[] = [];
+  readonly optionGroups: OptionGroupRecord[] = [];
+  readonly options: OptionRecord[] = [];
   private cSeq = 0;
   private pSeq = 0;
+  private ogSeq = 0;
+  private oSeq = 0;
 
   findMerchantContextForUserUlid(): Promise<MerchantContext | null> {
     return Promise.resolve(this.context);
@@ -99,6 +106,57 @@ class FakeCatalogueRepo implements CatalogueRepo {
     patch: { isOpen?: boolean; prepMinutes?: number },
   ): Promise<void> {
     this.profileUpdates.push({ merchantId, patch });
+    return Promise.resolve();
+  }
+  createOptionGroup(
+    productId: number,
+    input: { ulid: string; name: string; minSelect: number; maxSelect: number },
+  ): Promise<OptionGroupRecord> {
+    const g: OptionGroupRecord = {
+      id: ++this.ogSeq,
+      ulid: input.ulid,
+      productId,
+      name: input.name,
+      minSelect: input.minSelect,
+      maxSelect: input.maxSelect,
+    };
+    this.optionGroups.push(g);
+    return Promise.resolve(g);
+  }
+  findOptionGroupOwnerByUlid(ulid: string): Promise<OwnedRef | null> {
+    const g = this.optionGroups.find((x) => x.ulid === ulid);
+    if (!g) {
+      return Promise.resolve(null);
+    }
+    const p = this.products.find((x) => x.id === g.productId);
+    return Promise.resolve(p ? { id: g.id, merchantId: p.merchantId } : null);
+  }
+  createOption(
+    optionGroupId: number,
+    input: { ulid: string; name: string; priceDeltaCents: number; isAvailable: boolean },
+  ): Promise<OptionRecord> {
+    const o: OptionRecord = {
+      id: ++this.oSeq,
+      ulid: input.ulid,
+      optionGroupId,
+      name: input.name,
+      priceDeltaCents: input.priceDeltaCents,
+      isAvailable: input.isAvailable,
+    };
+    this.options.push(o);
+    return Promise.resolve(o);
+  }
+  findOptionOwnerByUlid(ulid: string): Promise<OwnedRef | null> {
+    const o = this.options.find((x) => x.ulid === ulid);
+    const g = o && this.optionGroups.find((x) => x.id === o.optionGroupId);
+    const p = g && this.products.find((x) => x.id === g.productId);
+    return Promise.resolve(o && p ? { id: o.id, merchantId: p.merchantId } : null);
+  }
+  setOptionAvailability(optionId: number, isAvailable: boolean): Promise<void> {
+    const o = this.options.find((x) => x.id === optionId);
+    if (o) {
+      o.isAvailable = isAvailable;
+    }
     return Promise.resolve();
   }
 }
@@ -199,5 +257,111 @@ describe('catalogue service', () => {
       version: 1,
     });
     expect(await thrownStatus(svc.editProduct(ME, 'OTHER', { expectedVersion: 1 }))).toBe(404);
+  });
+});
+
+describe('catalogue service — options', () => {
+  async function withProduct() {
+    const { repo, svc } = setup();
+    const prod = await svc.createProduct(ME, { name: 'Pizza', priceCents: 50000 });
+    return { repo, svc, prod };
+  }
+
+  it('adds an option group to an owned product', async () => {
+    const { svc, prod } = await withProduct();
+    const group = await svc.addOptionGroup(ME, prod.ulid, {
+      name: 'Size',
+      minSelect: 1,
+      maxSelect: 1,
+    });
+    expect(group.name).toBe('Size');
+    expect(group.maxSelect).toBe(1);
+  });
+
+  it('rejects invalid select bounds (400)', async () => {
+    const { svc, prod } = await withProduct();
+    expect(
+      await thrownStatus(
+        svc.addOptionGroup(ME, prod.ulid, { name: 'S', minSelect: 2, maxSelect: 1 }),
+      ),
+    ).toBe(400);
+    expect(
+      await thrownStatus(
+        svc.addOptionGroup(ME, prod.ulid, { name: 'S', minSelect: 0, maxSelect: 0 }),
+      ),
+    ).toBe(400);
+  });
+
+  it('adds an option (default available) and rejects a negative delta (400)', async () => {
+    const { svc, prod } = await withProduct();
+    const group = await svc.addOptionGroup(ME, prod.ulid, {
+      name: 'Size',
+      minSelect: 1,
+      maxSelect: 1,
+    });
+    const opt = await svc.addOption(ME, group.ulid, { name: 'Large', priceDeltaCents: 10000 });
+    expect(opt.isAvailable).toBe(true);
+    expect(opt.priceDeltaCents).toBe(10000);
+    expect(
+      await thrownStatus(svc.addOption(ME, group.ulid, { name: 'Free', priceDeltaCents: -1 })),
+    ).toBe(400);
+  });
+
+  it('toggles option availability', async () => {
+    const { svc, prod } = await withProduct();
+    const group = await svc.addOptionGroup(ME, prod.ulid, {
+      name: 'Size',
+      minSelect: 1,
+      maxSelect: 1,
+    });
+    const opt = await svc.addOption(ME, group.ulid, { name: 'Large', priceDeltaCents: 10000 });
+    const off = await svc.setOptionAvailability(ME, opt.ulid, false);
+    expect(off.isAvailable).toBe(false);
+  });
+
+  it('hides another merchant’s group / option (404)', async () => {
+    const { repo, svc } = setup();
+    repo.addProduct({
+      id: 50,
+      ulid: 'P2',
+      merchantId: 2,
+      categoryId: null,
+      name: 'Theirs',
+      description: null,
+      priceCents: 1,
+      currency: 'KES',
+      isAvailable: true,
+      version: 1,
+    });
+    repo.optionGroups.push({
+      id: 50,
+      ulid: 'G2',
+      productId: 50,
+      name: 'Size',
+      minSelect: 0,
+      maxSelect: 1,
+    });
+    repo.options.push({
+      id: 50,
+      ulid: 'O2',
+      optionGroupId: 50,
+      name: 'Large',
+      priceDeltaCents: 0,
+      isAvailable: true,
+    });
+    expect(await thrownStatus(svc.addOption(ME, 'G2', { name: 'X', priceDeltaCents: 0 }))).toBe(
+      404,
+    );
+    expect(await thrownStatus(svc.setOptionAvailability(ME, 'O2', false))).toBe(404);
+  });
+
+  it('forbids a caller with no merchant (403)', async () => {
+    const { repo, svc, prod } = await withProduct();
+    repo.context = null;
+    expect(
+      await thrownStatus(
+        svc.addOptionGroup(ME, prod.ulid, { name: 'S', minSelect: 0, maxSelect: 1 }),
+      ),
+    ).toBe(403);
   });
 });

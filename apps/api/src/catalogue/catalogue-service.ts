@@ -1,6 +1,13 @@
 import { newUlid } from '../auth/crypto';
 import { badRequest, conflict, forbidden, notFound } from '../http/errors';
-import type { CatalogueRepo, MerchantContext, ProductPatch, ProductRecord } from './repo';
+import type {
+  CatalogueRepo,
+  MerchantContext,
+  OptionGroupRecord,
+  OptionRecord,
+  ProductPatch,
+  ProductRecord,
+} from './repo';
 
 export interface CategorySummary {
   ulid: string;
@@ -39,6 +46,59 @@ function assertPrice(priceCents: number): void {
   if (!Number.isInteger(priceCents) || priceCents < 0) {
     throw badRequest('Price must be a non-negative integer number of cents', [
       { field: 'priceCents', issue: 'invalid' },
+    ]);
+  }
+}
+
+export interface OptionGroupSummary {
+  ulid: string;
+  name: string;
+  minSelect: number;
+  maxSelect: number;
+}
+
+export interface OptionSummary {
+  ulid: string;
+  name: string;
+  priceDeltaCents: number;
+  isAvailable: boolean;
+}
+
+function toOptionGroupSummary(g: OptionGroupRecord): OptionGroupSummary {
+  return { ulid: g.ulid, name: g.name, minSelect: g.minSelect, maxSelect: g.maxSelect };
+}
+
+function toOptionSummary(o: OptionRecord): OptionSummary {
+  return {
+    ulid: o.ulid,
+    name: o.name,
+    priceDeltaCents: o.priceDeltaCents,
+    isAvailable: o.isAvailable,
+  };
+}
+
+function assertSelectBounds(minSelect: number, maxSelect: number): void {
+  if (
+    !Number.isInteger(minSelect) ||
+    !Number.isInteger(maxSelect) ||
+    minSelect < 0 ||
+    maxSelect < 1 ||
+    minSelect > maxSelect
+  ) {
+    throw badRequest(
+      'Invalid select bounds: require 0 <= minSelect <= maxSelect and maxSelect >= 1',
+      [
+        { field: 'minSelect', issue: 'invalid' },
+        { field: 'maxSelect', issue: 'invalid' },
+      ],
+    );
+  }
+}
+
+function assertPriceDelta(priceDeltaCents: number): void {
+  if (!Number.isInteger(priceDeltaCents) || priceDeltaCents < 0) {
+    throw badRequest('Option price delta must be a non-negative integer number of cents', [
+      { field: 'priceDeltaCents', issue: 'invalid' },
     ]);
   }
 }
@@ -163,7 +223,67 @@ export function createCatalogueService(deps: CatalogueServiceDeps) {
     return { merchantUlid: ctx.merchantUlid };
   }
 
-  return { createCategory, createProduct, editProduct, setAvailability, updateProfile };
+  async function addOptionGroup(
+    actorUlid: string,
+    productUlid: string,
+    input: { name: string; minSelect: number; maxSelect: number },
+  ): Promise<OptionGroupSummary> {
+    const ctx = await requireContext(actorUlid);
+    const product = await ownedProduct(ctx, productUlid);
+    assertSelectBounds(input.minSelect, input.maxSelect);
+    const group = await repo.createOptionGroup(product.id, {
+      ulid: newUlid(),
+      name: input.name,
+      minSelect: input.minSelect,
+      maxSelect: input.maxSelect,
+    });
+    return toOptionGroupSummary(group);
+  }
+
+  async function addOption(
+    actorUlid: string,
+    groupUlid: string,
+    input: { name: string; priceDeltaCents: number; isAvailable?: boolean },
+  ): Promise<OptionSummary> {
+    const ctx = await requireContext(actorUlid);
+    const group = await repo.findOptionGroupOwnerByUlid(groupUlid);
+    if (!group || group.merchantId !== ctx.merchantId) {
+      throw notFound('Option group not found');
+    }
+    assertPriceDelta(input.priceDeltaCents);
+    const option = await repo.createOption(group.id, {
+      ulid: newUlid(),
+      name: input.name,
+      priceDeltaCents: input.priceDeltaCents,
+      isAvailable: input.isAvailable ?? true,
+    });
+    return toOptionSummary(option);
+  }
+
+  async function setOptionAvailability(
+    actorUlid: string,
+    optionUlid: string,
+    isAvailable: boolean,
+  ): Promise<{ ulid: string; isAvailable: boolean }> {
+    const ctx = await requireContext(actorUlid);
+    const option = await repo.findOptionOwnerByUlid(optionUlid);
+    if (!option || option.merchantId !== ctx.merchantId) {
+      throw notFound('Option not found');
+    }
+    await repo.setOptionAvailability(option.id, isAvailable);
+    return { ulid: optionUlid, isAvailable };
+  }
+
+  return {
+    createCategory,
+    createProduct,
+    editProduct,
+    setAvailability,
+    updateProfile,
+    addOptionGroup,
+    addOption,
+    setOptionAvailability,
+  };
 }
 
 export type CatalogueService = ReturnType<typeof createCatalogueService>;

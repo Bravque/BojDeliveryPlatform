@@ -41,6 +41,30 @@ export interface ProductPatch {
   categoryId?: number | null;
 }
 
+export interface OptionGroupRecord {
+  id: number;
+  ulid: string;
+  productId: number;
+  name: string;
+  minSelect: number;
+  maxSelect: number;
+}
+
+export interface OptionRecord {
+  id: number;
+  ulid: string;
+  optionGroupId: number;
+  name: string;
+  priceDeltaCents: number;
+  isAvailable: boolean;
+}
+
+/** A resource's id plus the merchant that owns it (via product → merchant), for ownership checks. */
+export interface OwnedRef {
+  id: number;
+  merchantId: number;
+}
+
 export interface CatalogueRepo {
   findMerchantContextForUserUlid(userUlid: string): Promise<MerchantContext | null>;
   createCategory(
@@ -70,6 +94,17 @@ export interface CatalogueRepo {
     merchantId: number,
     patch: { isOpen?: boolean; prepMinutes?: number },
   ): Promise<void>;
+  createOptionGroup(
+    productId: number,
+    input: { ulid: string; name: string; minSelect: number; maxSelect: number },
+  ): Promise<OptionGroupRecord>;
+  findOptionGroupOwnerByUlid(ulid: string): Promise<OwnedRef | null>;
+  createOption(
+    optionGroupId: number,
+    input: { ulid: string; name: string; priceDeltaCents: number; isAvailable: boolean },
+  ): Promise<OptionRecord>;
+  findOptionOwnerByUlid(ulid: string): Promise<OwnedRef | null>;
+  setOptionAvailability(optionId: number, isAvailable: boolean): Promise<void>;
 }
 
 interface CategoryRowDb {
@@ -115,6 +150,46 @@ function mapProduct(row: ProductRowDb): ProductRecord {
     currency: row.currency,
     isAvailable: Boolean(row.is_available),
     version: Number(row.version),
+  };
+}
+
+interface OptionGroupRowDb {
+  id: number | string;
+  ulid: string;
+  product_id: number | string;
+  name: string;
+  min_select: number | string;
+  max_select: number | string;
+}
+
+interface OptionRowDb {
+  id: number | string;
+  ulid: string;
+  option_group_id: number | string;
+  name: string;
+  price_delta_cents: number | string;
+  is_available: number | boolean;
+}
+
+function mapOptionGroup(row: OptionGroupRowDb): OptionGroupRecord {
+  return {
+    id: Number(row.id),
+    ulid: row.ulid,
+    productId: Number(row.product_id),
+    name: row.name,
+    minSelect: Number(row.min_select),
+    maxSelect: Number(row.max_select),
+  };
+}
+
+function mapOption(row: OptionRowDb): OptionRecord {
+  return {
+    id: Number(row.id),
+    ulid: row.ulid,
+    optionGroupId: Number(row.option_group_id),
+    name: row.name,
+    priceDeltaCents: Number(row.price_delta_cents),
+    isAvailable: Boolean(row.is_available),
   };
 }
 
@@ -204,6 +279,61 @@ export function createKnexCatalogueRepo(db: Knex): CatalogueRepo {
       if (Object.keys(update).length > 0) {
         await db('merchant').where({ id: merchantId }).update(update);
       }
+    },
+
+    async createOptionGroup(productId, input) {
+      const inserted = await db('product_option_group').insert({
+        ulid: input.ulid,
+        product_id: productId,
+        name: input.name,
+        min_select: input.minSelect,
+        max_select: input.maxSelect,
+      });
+      const id = inserted[0];
+      if (id === undefined) {
+        throw new Error('Failed to create option group');
+      }
+      const row = (await db('product_option_group').where({ id }).first()) as OptionGroupRowDb;
+      return mapOptionGroup(row);
+    },
+
+    async findOptionGroupOwnerByUlid(ulid) {
+      const row = (await db('product_option_group')
+        .join('product', 'product.id', 'product_option_group.product_id')
+        .where('product_option_group.ulid', ulid)
+        .first('product_option_group.id as id', 'product.merchant_id as merchant_id')) as
+        { id: number | string; merchant_id: number | string } | undefined;
+      return row ? { id: Number(row.id), merchantId: Number(row.merchant_id) } : null;
+    },
+
+    async createOption(optionGroupId, input) {
+      const inserted = await db('product_option').insert({
+        ulid: input.ulid,
+        option_group_id: optionGroupId,
+        name: input.name,
+        price_delta_cents: input.priceDeltaCents,
+        is_available: input.isAvailable,
+      });
+      const id = inserted[0];
+      if (id === undefined) {
+        throw new Error('Failed to create option');
+      }
+      const row = (await db('product_option').where({ id }).first()) as OptionRowDb;
+      return mapOption(row);
+    },
+
+    async findOptionOwnerByUlid(ulid) {
+      const row = (await db('product_option')
+        .join('product_option_group', 'product_option_group.id', 'product_option.option_group_id')
+        .join('product', 'product.id', 'product_option_group.product_id')
+        .where('product_option.ulid', ulid)
+        .first('product_option.id as id', 'product.merchant_id as merchant_id')) as
+        { id: number | string; merchant_id: number | string } | undefined;
+      return row ? { id: Number(row.id), merchantId: Number(row.merchant_id) } : null;
+    },
+
+    async setOptionAvailability(optionId, isAvailable) {
+      await db('product_option').where({ id: optionId }).update({ is_available: isAvailable });
     },
   };
 }
