@@ -1,0 +1,39 @@
+{
+  "name": "@boj/api",
+  "version": "0.0.0",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "clean": "rm -rf dist",
+    "db:migrate": "tsx node_modules/knex/bin/cli.js migrate:latest --knexfile knexfile.ts",
+    "db:rollback": "tsx node_modules/knex/bin/cli.js migrate:rollback --knexfile knexfile.ts",
+    "db:status": "tsx node_modules/knex/bin/cli.js migrate:status --knexfile knexfile.ts",
+    "db:make": "tsx node_modules/knex/bin/cli.js migrate:make --knexfile knexfile.ts -x ts",
+    "db:seed": "tsx node_modules/knex/bin/cli.js seed:run --knexfile knexfile.ts",
+    "db:seed:make": "tsx node_modules/knex/bin/cli.js seed:make --knexfile knexfile.ts -x ts"
+  },
+  "dependencies": {
+    "@boj/config": "workspace:*",
+    "@boj/money": "workspace:*",
+    "express": "catalog:",
+    "knex": "catalog:",
+    "mysql2": "catalog:",
+    "pino": "catalog:",
+    "pino-http": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/express": "catalog:",
+    "@types/node": "catalog:",
+    "@types/supertest": "catalog:",
+    "supertest": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

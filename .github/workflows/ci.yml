@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+# Least privilege: CI only reads the repository (checkout). No job pushes, comments,
+# or publishes, so no write scopes are granted.
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run format:check
+      - run: pnpm run lint
+      - run: pnpm run typecheck
+      - run: pnpm run test
+      - run: pnpm run build
+
+  migrations:
+    name: Migration up/down against MySQL
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: boj_test
+          MYSQL_USER: boj
+          MYSQL_PASSWORD: boj
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      NODE_ENV: test
+      DATABASE_URL: mysql://boj:boj@127.0.0.1:3306/boj_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build workspace packages (knexfile imports @boj/config)
+        run: pnpm --filter @boj/config --filter @boj/money run build
+      - name: Apply migrations
+        run: pnpm --filter @boj/api run db:migrate
+      - name: Load synthetic seed
+        run: pnpm --filter @boj/api run db:seed
+      - name: Re-run seed (verify idempotency)
+        run: pnpm --filter @boj/api run db:seed
+      - name: Roll back migrations (verify reversibility)
+        run: pnpm --filter @boj/api run db:rollback
