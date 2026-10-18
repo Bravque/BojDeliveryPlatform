@@ -7,6 +7,8 @@ import { createSessionService } from './auth/session-service';
 import { MockSmsProvider } from './auth/sms/mock';
 import { createUserService } from './auth/user-service';
 import { createApp } from './app';
+import { createMerchantService } from './merchant/merchant-service';
+import { createKnexMerchantRepo } from './merchant/repo';
 import { createRequireAuth } from './middleware/auth';
 import { loadEnv } from './env';
 import { buildKnexConfig, checkDbHealth, createDb } from './platform/db';
@@ -36,11 +38,20 @@ function main(): void {
     }),
   };
 
+  const merchant = {
+    merchantService: createMerchantService({
+      repo: createKnexMerchantRepo(db),
+      auditService: auth.auditService,
+    }),
+    requireAuth: auth.requireAuth,
+  };
+
   const app = createApp({
     logger,
     version: VERSION,
     checkReadiness: async () => ({ db: await checkDbHealth(db) }),
     auth,
+    merchant,
   });
 
   const server = app.listen(env.PORT, () => {
