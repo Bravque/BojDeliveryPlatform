@@ -2,6 +2,7 @@ import { generateKeyPairSync } from 'node:crypto';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { signAccessToken } from '../auth/tokens';
+import type { CatalogueService } from '../catalogue/catalogue-service';
 import type { MerchantService, MerchantSummary } from '../merchant/merchant-service';
 import { createApp } from '../app';
 import { createRequireAuth } from '../middleware/auth';
@@ -39,12 +40,21 @@ const merchantService: MerchantService = {
   addOwner: () => Promise.resolve(summary),
 };
 
+const catalogueService: CatalogueService = {
+  createCategory: () => Promise.reject(new Error('not used')),
+  createProduct: () => Promise.reject(new Error('not used')),
+  editProduct: () => Promise.reject(new Error('not used')),
+  setAvailability: () => Promise.reject(new Error('not used')),
+  updateProfile: () => Promise.reject(new Error('not used')),
+};
+
 function app() {
   return createApp({
     logger: createLogger({ level: 'silent' }),
     version: 'test',
     merchant: {
       merchantService,
+      catalogueService,
       requireAuth: createRequireAuth({ publicKey, issuer: ISSUER, audience: AUDIENCE }),
     },
   });
