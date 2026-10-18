@@ -61,6 +61,8 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Build workspace packages (knexfile imports @boj/config)
+        run: pnpm --filter @boj/config --filter @boj/money run build
       - name: Apply migrations
         run: pnpm --filter @boj/api run db:migrate
       - name: Load synthetic seed
