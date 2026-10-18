@@ -32,19 +32,25 @@ Customer/rider mobile apps and merchant/admin dashboards arrive in later phases.
 # 1. Install dependencies
 pnpm install
 
-# 2. Create your local env file
+# 2. Build the workspace packages once before running them.
+#    @boj/config (and @boj/money) compile to dist/, which knexfile.ts and the API
+#    import at runtime. A fresh clone must build first, or `pnpm db:migrate` and the
+#    dev server fail with "Cannot find module .../@boj/config/dist/index.js".
+pnpm build
+
+# 3. Create your local env file
 cp .env.example .env
 
-# 3. (optional) start local infrastructure
+# 4. (optional) start local infrastructure
 docker compose up -d
 
-# 4. Run database migrations (requires a reachable MySQL from DATABASE_URL)
+# 5. Run database migrations (requires a reachable MySQL from DATABASE_URL)
 pnpm db:migrate
 
-# 5. (optional) load synthetic dev data (inactive Migori town + CBD zone)
+# 6. (optional) load synthetic dev data (inactive Migori town + CBD zone)
 pnpm db:seed
 
-# 6. Start the API in watch mode
+# 7. Start the API in watch mode
 pnpm --filter @boj/api dev
 # -> GET http://localhost:4000/health
 ```
