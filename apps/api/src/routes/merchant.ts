@@ -47,6 +47,11 @@ const optionSchema = z.object({
   isAvailable: z.boolean().optional(),
 });
 
+const inventorySchema = z.object({
+  trackStock: z.boolean(),
+  quantity: z.number().int().min(0),
+});
+
 function actorUlid(req: Request): string {
   return req.principal!.ulid;
 }
@@ -153,6 +158,17 @@ export function merchantRouter(
             isAvailable,
           ),
         );
+    }),
+  );
+
+  router.put(
+    '/merchant/catalogue/products/:ulid/inventory',
+    ...merchantOnly,
+    asyncHandler(async (req, res) => {
+      const input = inventorySchema.parse(req.body);
+      res
+        .status(200)
+        .json(await catalogueService.setInventory(actorUlid(req), req.params.ulid!, input));
     }),
   );
 

@@ -65,6 +65,13 @@ export interface OwnedRef {
   merchantId: number;
 }
 
+export interface InventoryRecord {
+  productId: number;
+  trackStock: boolean;
+  quantity: number;
+  reserved: number;
+}
+
 export interface CatalogueRepo {
   findMerchantContextForUserUlid(userUlid: string): Promise<MerchantContext | null>;
   createCategory(
@@ -105,6 +112,14 @@ export interface CatalogueRepo {
   ): Promise<OptionRecord>;
   findOptionOwnerByUlid(ulid: string): Promise<OwnedRef | null>;
   setOptionAvailability(optionId: number, isAvailable: boolean): Promise<void>;
+  setInventory(
+    productId: number,
+    input: { trackStock: boolean; quantity: number },
+  ): Promise<InventoryRecord>;
+  getInventory(productId: number): Promise<InventoryRecord | null>;
+  /** Atomically reserve `quantity`. Returns true if reserved (or the product isn't stock-tracked). */
+  reserve(productId: number, quantity: number): Promise<boolean>;
+  release(productId: number, quantity: number): Promise<void>;
 }
 
 interface CategoryRowDb {
@@ -190,6 +205,22 @@ function mapOption(row: OptionRowDb): OptionRecord {
     name: row.name,
     priceDeltaCents: Number(row.price_delta_cents),
     isAvailable: Boolean(row.is_available),
+  };
+}
+
+interface InventoryRowDb {
+  product_id: number | string;
+  track_stock: number | boolean;
+  quantity: number | string;
+  reserved: number | string;
+}
+
+function mapInventory(row: InventoryRowDb): InventoryRecord {
+  return {
+    productId: Number(row.product_id),
+    trackStock: Boolean(row.track_stock),
+    quantity: Number(row.quantity),
+    reserved: Number(row.reserved),
   };
 }
 
@@ -334,6 +365,46 @@ export function createKnexCatalogueRepo(db: Knex): CatalogueRepo {
 
     async setOptionAvailability(optionId, isAvailable) {
       await db('product_option').where({ id: optionId }).update({ is_available: isAvailable });
+    },
+
+    async setInventory(productId, input) {
+      await db('inventory')
+        .insert({ product_id: productId, track_stock: input.trackStock, quantity: input.quantity })
+        .onConflict('product_id')
+        .merge({ track_stock: input.trackStock, quantity: input.quantity });
+      const row = (await db('inventory')
+        .where({ product_id: productId })
+        .first()) as InventoryRowDb;
+      return mapInventory(row);
+    },
+
+    async getInventory(productId) {
+      const row = (await db('inventory').where({ product_id: productId }).first()) as
+        InventoryRowDb | undefined;
+      return row ? mapInventory(row) : null;
+    },
+
+    async reserve(productId, quantity) {
+      // Atomic: only reserve when tracked and enough free stock remains (quantity - reserved).
+      const affected = await db('inventory')
+        .where('product_id', productId)
+        .where('track_stock', true)
+        .whereRaw('quantity - reserved >= ?', [quantity])
+        .update({ reserved: db.raw('reserved + ?', [quantity]) });
+      if (affected > 0) {
+        return true;
+      }
+      // Zero rows: either not stock-tracked (unlimited → allow) or insufficient stock (reject).
+      const row = (await db('inventory').where('product_id', productId).first('track_stock')) as
+        { track_stock: number | boolean } | undefined;
+      return !row || !row.track_stock;
+    },
+
+    async release(productId, quantity) {
+      await db('inventory')
+        .where('product_id', productId)
+        .where('track_stock', true)
+        .update({ reserved: db.raw('GREATEST(reserved - ?, 0)', [quantity]) });
     },
   };
 }

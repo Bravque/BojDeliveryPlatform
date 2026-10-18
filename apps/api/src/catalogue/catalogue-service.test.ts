@@ -3,6 +3,7 @@ import { createCatalogueService } from './catalogue-service';
 import type {
   CatalogueRepo,
   CategoryRecord,
+  InventoryRecord,
   MerchantContext,
   OptionGroupRecord,
   OptionRecord,
@@ -21,6 +22,7 @@ class FakeCatalogueRepo implements CatalogueRepo {
   }[] = [];
   readonly optionGroups: OptionGroupRecord[] = [];
   readonly options: OptionRecord[] = [];
+  readonly inventory = new Map<number, InventoryRecord>();
   private cSeq = 0;
   private pSeq = 0;
   private ogSeq = 0;
@@ -156,6 +158,41 @@ class FakeCatalogueRepo implements CatalogueRepo {
     const o = this.options.find((x) => x.id === optionId);
     if (o) {
       o.isAvailable = isAvailable;
+    }
+    return Promise.resolve();
+  }
+  setInventory(
+    productId: number,
+    input: { trackStock: boolean; quantity: number },
+  ): Promise<InventoryRecord> {
+    const reserved = this.inventory.get(productId)?.reserved ?? 0;
+    const inv: InventoryRecord = {
+      productId,
+      trackStock: input.trackStock,
+      quantity: input.quantity,
+      reserved,
+    };
+    this.inventory.set(productId, inv);
+    return Promise.resolve(inv);
+  }
+  getInventory(productId: number): Promise<InventoryRecord | null> {
+    return Promise.resolve(this.inventory.get(productId) ?? null);
+  }
+  reserve(productId: number, quantity: number): Promise<boolean> {
+    const inv = this.inventory.get(productId);
+    if (!inv || !inv.trackStock) {
+      return Promise.resolve(true);
+    }
+    if (inv.quantity - inv.reserved >= quantity) {
+      inv.reserved += quantity;
+      return Promise.resolve(true);
+    }
+    return Promise.resolve(false);
+  }
+  release(productId: number, quantity: number): Promise<void> {
+    const inv = this.inventory.get(productId);
+    if (inv && inv.trackStock) {
+      inv.reserved = Math.max(inv.reserved - quantity, 0);
     }
     return Promise.resolve();
   }
@@ -363,5 +400,45 @@ describe('catalogue service — options', () => {
         svc.addOptionGroup(ME, prod.ulid, { name: 'S', minSelect: 0, maxSelect: 1 }),
       ),
     ).toBe(403);
+  });
+});
+
+describe('catalogue service — inventory', () => {
+  async function withProduct() {
+    const { repo, svc } = setup();
+    const prod = await svc.createProduct(ME, { name: 'Ugali', priceCents: 15000 });
+    return { repo, svc, prod };
+  }
+
+  it('sets inventory for an owned product', async () => {
+    const { svc, prod } = await withProduct();
+    const inv = await svc.setInventory(ME, prod.ulid, { trackStock: true, quantity: 5 });
+    expect(inv).toEqual({ trackStock: true, quantity: 5, reserved: 0 });
+  });
+
+  it('rejects a negative quantity (400)', async () => {
+    const { svc, prod } = await withProduct();
+    expect(
+      await thrownStatus(svc.setInventory(ME, prod.ulid, { trackStock: true, quantity: -1 })),
+    ).toBe(400);
+  });
+
+  it('refuses inventory for another merchant’s product (404)', async () => {
+    const { repo, svc } = setup();
+    repo.addProduct({
+      id: 70,
+      ulid: 'P9',
+      merchantId: 2,
+      categoryId: null,
+      name: 'Theirs',
+      description: null,
+      priceCents: 1,
+      currency: 'KES',
+      isAvailable: true,
+      version: 1,
+    });
+    expect(await thrownStatus(svc.setInventory(ME, 'P9', { trackStock: true, quantity: 5 }))).toBe(
+      404,
+    );
   });
 });

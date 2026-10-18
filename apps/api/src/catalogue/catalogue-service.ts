@@ -2,6 +2,7 @@ import { newUlid } from '../auth/crypto';
 import { badRequest, conflict, forbidden, notFound } from '../http/errors';
 import type {
   CatalogueRepo,
+  InventoryRecord,
   MerchantContext,
   OptionGroupRecord,
   OptionRecord,
@@ -62,6 +63,16 @@ export interface OptionSummary {
   name: string;
   priceDeltaCents: number;
   isAvailable: boolean;
+}
+
+export interface InventorySummary {
+  trackStock: boolean;
+  quantity: number;
+  reserved: number;
+}
+
+function toInventorySummary(inv: InventoryRecord): InventorySummary {
+  return { trackStock: inv.trackStock, quantity: inv.quantity, reserved: inv.reserved };
 }
 
 function toOptionGroupSummary(g: OptionGroupRecord): OptionGroupSummary {
@@ -274,6 +285,21 @@ export function createCatalogueService(deps: CatalogueServiceDeps) {
     return { ulid: optionUlid, isAvailable };
   }
 
+  async function setInventory(
+    actorUlid: string,
+    productUlid: string,
+    input: { trackStock: boolean; quantity: number },
+  ): Promise<InventorySummary> {
+    const ctx = await requireContext(actorUlid);
+    const product = await ownedProduct(ctx, productUlid);
+    if (!Number.isInteger(input.quantity) || input.quantity < 0) {
+      throw badRequest('Quantity must be a non-negative integer', [
+        { field: 'quantity', issue: 'invalid' },
+      ]);
+    }
+    return toInventorySummary(await repo.setInventory(product.id, input));
+  }
+
   return {
     createCategory,
     createProduct,
@@ -283,6 +309,7 @@ export function createCatalogueService(deps: CatalogueServiceDeps) {
     addOptionGroup,
     addOption,
     setOptionAvailability,
+    setInventory,
   };
 }
 

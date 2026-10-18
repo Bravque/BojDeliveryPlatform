@@ -33,9 +33,11 @@ const ownerToken = signAccessToken(
 describe.skipIf(!DATABASE_URL)('catalogue integration (real MySQL)', () => {
   let db: Knex;
   let app: ReturnType<typeof createApp>;
+  let catalogueRepo: ReturnType<typeof createKnexCatalogueRepo>;
 
   beforeAll(() => {
     db = createDb(buildKnexConfig({ DATABASE_URL: DATABASE_URL as string }));
+    catalogueRepo = createKnexCatalogueRepo(db);
     app = createApp({
       logger: createLogger({ level: 'silent' }),
       version: 'int',
@@ -44,7 +46,7 @@ describe.skipIf(!DATABASE_URL)('catalogue integration (real MySQL)', () => {
           repo: createKnexMerchantRepo(db),
           auditService: createAuditService(createKnexAuthRepo(db)),
         }),
-        catalogueService: createCatalogueService({ repo: createKnexCatalogueRepo(db) }),
+        catalogueService: createCatalogueService({ repo: catalogueRepo }),
         requireAuth: createRequireAuth({ publicKey, issuer: ISSUER, audience: AUDIENCE }),
       },
     });
@@ -59,6 +61,7 @@ describe.skipIf(!DATABASE_URL)('catalogue integration (real MySQL)', () => {
   beforeEach(async () => {
     await db.raw('SET FOREIGN_KEY_CHECKS = 0');
     for (const table of [
+      'inventory',
       'product_option',
       'product_option_group',
       'product',
@@ -186,5 +189,38 @@ describe.skipIf(!DATABASE_URL)('catalogue integration (real MySQL)', () => {
     };
     expect(Number(row.price_delta_cents)).toBe(10000);
     expect(Number(row.is_available)).toBe(0);
+  });
+
+  it('inventory: set stock, then N concurrent reservations on 1 unit → exactly one wins', async () => {
+    const created = await request(app)
+      .post('/api/v1/merchant/catalogue/products')
+      .set(auth())
+      .send({ name: 'Scarce', priceCents: 1000 });
+    expect(created.status).toBe(201);
+
+    const set = await request(app)
+      .put(`/api/v1/merchant/catalogue/products/${created.body.ulid}/inventory`)
+      .set(auth())
+      .send({ trackStock: true, quantity: 1 });
+    expect(set.status).toBe(200);
+    expect(set.body.quantity).toBe(1);
+
+    const prow = (await db('product').where({ ulid: created.body.ulid }).first('id')) as {
+      id: number | string;
+    };
+    const productId = Number(prow.id);
+
+    // 10 concurrent single-unit reservations against 1 stock → exactly one succeeds.
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () => catalogueRepo.reserve(productId, 1)),
+    );
+    expect(results.filter(Boolean)).toHaveLength(1);
+
+    const inv = await catalogueRepo.getInventory(productId);
+    expect(inv?.reserved).toBe(1);
+
+    // release returns the unit.
+    await catalogueRepo.release(productId, 1);
+    expect((await catalogueRepo.getInventory(productId))?.reserved).toBe(0);
   });
 });
