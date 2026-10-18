@@ -7,6 +7,8 @@ import { createSessionService } from './auth/session-service';
 import { MockSmsProvider } from './auth/sms/mock';
 import { createUserService } from './auth/user-service';
 import { createApp } from './app';
+import { createCatalogueService } from './catalogue/catalogue-service';
+import { createKnexCatalogueRepo } from './catalogue/repo';
 import { createMerchantService } from './merchant/merchant-service';
 import { createKnexMerchantRepo } from './merchant/repo';
 import { createRequireAuth } from './middleware/auth';
@@ -43,6 +45,7 @@ function main(): void {
       repo: createKnexMerchantRepo(db),
       auditService: auth.auditService,
     }),
+    catalogueService: createCatalogueService({ repo: createKnexCatalogueRepo(db) }),
     requireAuth: auth.requireAuth,
   };
 

@@ -1,12 +1,14 @@
 import express, { type Request, type RequestHandler, type Router } from 'express';
 import { z } from 'zod';
+import type { CatalogueService } from '../catalogue/catalogue-service';
 import type { Actor, MerchantService } from '../merchant/merchant-service';
 import { asyncHandler } from '../middleware/error';
 import { requireRole } from '../middleware/rbac';
 
-/** Admin-facing merchant onboarding. More merchant/public routes arrive in later increments. */
+/** Merchant domain dependencies: admin onboarding + merchant-facing catalogue. */
 export interface MerchantModule {
   merchantService: MerchantService;
+  catalogueService: CatalogueService;
   requireAuth: RequestHandler;
 }
 

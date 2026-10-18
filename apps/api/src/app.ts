@@ -7,6 +7,7 @@ import { merchantAdminRouter, type MerchantModule } from './routes/admin-merchan
 import { adminRouter } from './routes/admin';
 import { authRouter, type AuthModule } from './routes/auth';
 import { healthRouter, type HealthDeps } from './routes/health';
+import { merchantRouter } from './routes/merchant';
 
 export interface AppDeps {
   logger: Logger;
@@ -47,6 +48,7 @@ export function createApp(deps: AppDeps): Express {
     }
     if (deps.merchant) {
       apiV1.use(merchantAdminRouter(deps.merchant.merchantService, deps.merchant.requireAuth));
+      apiV1.use(merchantRouter(deps.merchant.catalogueService, deps.merchant.requireAuth));
     }
     app.use('/api/v1', apiV1);
   }
