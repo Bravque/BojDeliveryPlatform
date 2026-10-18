@@ -57,6 +57,38 @@ export interface AuthRepo {
   insertRefreshToken(input: InsertRefreshTokenInput): Promise<void>;
 }
 
+export interface RefreshTokenRecord {
+  id: number;
+  userId: number;
+  familyId: string;
+  expiresAt: Date;
+  revokedAt: Date | null;
+}
+
+export interface ProfilePatch {
+  displayName?: string;
+}
+
+/** Refresh-token lifecycle (rotation, reuse detection, logout). */
+export interface SessionRepo {
+  findRefreshTokenByHash(tokenHash: string): Promise<RefreshTokenRecord | null>;
+  revokeRefreshToken(id: number, revokedAt: Date): Promise<void>;
+  revokeFamily(familyId: string, revokedAt: Date): Promise<void>;
+  insertRefreshToken(input: InsertRefreshTokenInput): Promise<void>;
+  findUserById(id: number): Promise<UserRecord | null>;
+  getUserRoleCodes(userId: number): Promise<string[]>;
+}
+
+/** Profile reads/writes for the authenticated principal. */
+export interface UserRepo {
+  findUserByUlid(ulid: string): Promise<UserRecord | null>;
+  updateUserProfile(userId: number, patch: ProfilePatch): Promise<void>;
+  getUserRoleCodes(userId: number): Promise<string[]>;
+}
+
+/** The full Knex-backed repository implements every segment. */
+export type FullAuthRepo = AuthRepo & SessionRepo & UserRepo;
+
 interface UserRowDb {
   id: number | string;
   ulid: string;
@@ -75,6 +107,24 @@ interface OtpRowDb {
   expires_at: string | Date;
   consumed_at: string | Date | null;
   created_at: string | Date;
+}
+
+interface RefreshTokenRowDb {
+  id: number | string;
+  user_id: number | string;
+  family_id: string;
+  expires_at: string | Date;
+  revoked_at: string | Date | null;
+}
+
+function mapRefreshToken(row: RefreshTokenRowDb): RefreshTokenRecord {
+  return {
+    id: Number(row.id),
+    userId: Number(row.user_id),
+    familyId: row.family_id,
+    expiresAt: new Date(row.expires_at),
+    revokedAt: row.revoked_at ? new Date(row.revoked_at) : null,
+  };
 }
 
 function mapUser(row: UserRowDb): UserRecord {
@@ -101,8 +151,8 @@ function mapOtp(row: OtpRowDb): OtpRecord {
   };
 }
 
-/** MySQL/Knex-backed implementation of {@link AuthRepo}. */
-export function createKnexAuthRepo(db: Knex): AuthRepo {
+/** MySQL/Knex-backed implementation of the full auth repository. */
+export function createKnexAuthRepo(db: Knex): FullAuthRepo {
   return {
     async countOtpRequestsByPhone(phoneE164, since) {
       const rows = await db('auth_credential_otp')
@@ -191,6 +241,46 @@ export function createKnexAuthRepo(db: Knex): AuthRepo {
         family_id: input.familyId,
         expires_at: input.expiresAt,
       });
+    },
+
+    async findRefreshTokenByHash(tokenHash) {
+      const row = (await db('refresh_token').where({ token_hash: tokenHash }).first()) as
+        RefreshTokenRowDb | undefined;
+      return row ? mapRefreshToken(row) : null;
+    },
+
+    async revokeRefreshToken(id, revokedAt) {
+      await db('refresh_token')
+        .where({ id })
+        .whereNull('revoked_at')
+        .update({ revoked_at: revokedAt });
+    },
+
+    async revokeFamily(familyId, revokedAt) {
+      await db('refresh_token')
+        .where({ family_id: familyId })
+        .whereNull('revoked_at')
+        .update({ revoked_at: revokedAt });
+    },
+
+    async findUserById(id) {
+      const row = (await db('user').where({ id }).first()) as UserRowDb | undefined;
+      return row ? mapUser(row) : null;
+    },
+
+    async findUserByUlid(ulid) {
+      const row = (await db('user').where({ ulid }).first()) as UserRowDb | undefined;
+      return row ? mapUser(row) : null;
+    },
+
+    async updateUserProfile(userId, patch) {
+      const update: Record<string, unknown> = {};
+      if (patch.displayName !== undefined) {
+        update.display_name = patch.displayName;
+      }
+      if (Object.keys(update).length > 0) {
+        await db('user').where({ id: userId }).update(update);
+      }
     },
   };
 }
