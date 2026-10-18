@@ -20,15 +20,19 @@
   "dependencies": {
     "@boj/config": "workspace:*",
     "@boj/money": "workspace:*",
+    "argon2": "catalog:",
     "express": "catalog:",
+    "jsonwebtoken": "catalog:",
     "knex": "catalog:",
     "mysql2": "catalog:",
     "pino": "catalog:",
     "pino-http": "catalog:",
+    "ulid": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@types/express": "catalog:",
+    "@types/jsonwebtoken": "catalog:",
     "@types/node": "catalog:",
     "@types/supertest": "catalog:",
     "supertest": "catalog:",

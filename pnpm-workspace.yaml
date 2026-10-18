@@ -17,3 +17,7 @@ catalog:
   tsx: ^4.19.1
   supertest: ^7.0.0
   '@types/supertest': ^6.0.2
+  jsonwebtoken: ^9.0.2
+  '@types/jsonwebtoken': ^9.0.7
+  argon2: ^0.41.1
+  ulid: ^2.3.0
