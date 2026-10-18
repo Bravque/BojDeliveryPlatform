@@ -46,6 +46,9 @@ const catalogueService: CatalogueService = {
   editProduct: () => Promise.reject(new Error('not used')),
   setAvailability: () => Promise.reject(new Error('not used')),
   updateProfile: () => Promise.reject(new Error('not used')),
+  addOptionGroup: () => Promise.reject(new Error('not used')),
+  addOption: () => Promise.reject(new Error('not used')),
+  setOptionAvailability: () => Promise.reject(new Error('not used')),
 };
 
 function app() {

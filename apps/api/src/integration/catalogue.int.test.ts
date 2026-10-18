@@ -59,6 +59,8 @@ describe.skipIf(!DATABASE_URL)('catalogue integration (real MySQL)', () => {
   beforeEach(async () => {
     await db.raw('SET FOREIGN_KEY_CHECKS = 0');
     for (const table of [
+      'product_option',
+      'product_option_group',
       'product',
       'category',
       'merchant_user',
@@ -150,5 +152,39 @@ describe.skipIf(!DATABASE_URL)('catalogue integration (real MySQL)', () => {
 
     const row = (await db('product').where({ ulid }).first()) as { version: number };
     expect(Number(row.version)).toBe(2); // exactly one edit applied
+  });
+
+  it('adds option groups + options and toggles option availability (real DB)', async () => {
+    const created = await request(app)
+      .post('/api/v1/merchant/catalogue/products')
+      .set(auth())
+      .send({ name: 'Pizza', priceCents: 50000 });
+    expect(created.status).toBe(201);
+
+    const group = await request(app)
+      .post(`/api/v1/merchant/catalogue/products/${created.body.ulid}/option-groups`)
+      .set(auth())
+      .send({ name: 'Size', minSelect: 1, maxSelect: 1 });
+    expect(group.status).toBe(201);
+
+    const option = await request(app)
+      .post(`/api/v1/merchant/catalogue/option-groups/${group.body.ulid}/options`)
+      .set(auth())
+      .send({ name: 'Large', priceDeltaCents: 10000 });
+    expect(option.status).toBe(201);
+    expect(option.body.isAvailable).toBe(true);
+
+    const off = await request(app)
+      .patch(`/api/v1/merchant/catalogue/options/${option.body.ulid}/availability`)
+      .set(auth())
+      .send({ isAvailable: false });
+    expect(off.status).toBe(200);
+
+    const row = (await db('product_option').where({ ulid: option.body.ulid }).first()) as {
+      price_delta_cents: number;
+      is_available: number;
+    };
+    expect(Number(row.price_delta_cents)).toBe(10000);
+    expect(Number(row.is_available)).toBe(0);
   });
 });

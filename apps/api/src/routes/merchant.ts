@@ -35,6 +35,18 @@ const productEditSchema = z.object({
 
 const availabilitySchema = z.object({ isAvailable: z.boolean() });
 
+const optionGroupSchema = z.object({
+  name: z.string().min(1).max(120),
+  minSelect: z.number().int().min(0).max(20).default(0),
+  maxSelect: z.number().int().min(1).max(20).default(1),
+});
+
+const optionSchema = z.object({
+  name: z.string().min(1).max(120),
+  priceDeltaCents: z.number().int().min(0),
+  isAvailable: z.boolean().optional(),
+});
+
 function actorUlid(req: Request): string {
   return req.principal!.ulid;
 }
@@ -101,6 +113,45 @@ export function merchantRouter(
         .status(200)
         .json(
           await catalogueService.setAvailability(actorUlid(req), req.params.ulid!, isAvailable),
+        );
+    }),
+  );
+
+  router.post(
+    '/merchant/catalogue/products/:ulid/option-groups',
+    ...merchantOnly,
+    asyncHandler(async (req, res) => {
+      const input = optionGroupSchema.parse(req.body);
+      res
+        .status(201)
+        .json(await catalogueService.addOptionGroup(actorUlid(req), req.params.ulid!, input));
+    }),
+  );
+
+  router.post(
+    '/merchant/catalogue/option-groups/:ulid/options',
+    ...merchantOnly,
+    asyncHandler(async (req, res) => {
+      const input = optionSchema.parse(req.body);
+      res
+        .status(201)
+        .json(await catalogueService.addOption(actorUlid(req), req.params.ulid!, input));
+    }),
+  );
+
+  router.patch(
+    '/merchant/catalogue/options/:ulid/availability',
+    ...merchantOnly,
+    asyncHandler(async (req, res) => {
+      const { isAvailable } = availabilitySchema.parse(req.body);
+      res
+        .status(200)
+        .json(
+          await catalogueService.setOptionAvailability(
+            actorUlid(req),
+            req.params.ulid!,
+            isAvailable,
+          ),
         );
     }),
   );

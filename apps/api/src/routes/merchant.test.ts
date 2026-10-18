@@ -60,6 +60,10 @@ const happy: CatalogueService = {
   editProduct: () => Promise.resolve({ ...product, version: 2 }),
   setAvailability: () => Promise.resolve({ ...product, isAvailable: false }),
   updateProfile: () => Promise.resolve({ merchantUlid: 'M1' }),
+  addOptionGroup: () => Promise.resolve({ ulid: 'G1', name: 'Size', minSelect: 1, maxSelect: 1 }),
+  addOption: () =>
+    Promise.resolve({ ulid: 'O1', name: 'Large', priceDeltaCents: 10000, isAvailable: true }),
+  setOptionAvailability: () => Promise.resolve({ ulid: 'O1', isAvailable: false }),
 };
 
 const owner = () => tokenFor(['merchant_owner']);
@@ -133,5 +137,48 @@ describe('merchant catalogue routes (RBAC + validation)', () => {
       .send({ expectedVersion: 1, priceCents: 16000 });
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('VERSION_CONFLICT');
+  });
+
+  it('adds an option group (201)', async () => {
+    const res = await request(appWith(happy))
+      .post('/api/v1/merchant/catalogue/products/P1/option-groups')
+      .set('Authorization', `Bearer ${owner()}`)
+      .send({ name: 'Size', minSelect: 1, maxSelect: 1 });
+    expect(res.status).toBe(201);
+    expect(res.body.ulid).toBe('G1');
+  });
+
+  it('adds an option (201)', async () => {
+    const res = await request(appWith(happy))
+      .post('/api/v1/merchant/catalogue/option-groups/G1/options')
+      .set('Authorization', `Bearer ${owner()}`)
+      .send({ name: 'Large', priceDeltaCents: 10000 });
+    expect(res.status).toBe(201);
+    expect(res.body.ulid).toBe('O1');
+  });
+
+  it('toggles option availability (200)', async () => {
+    const res = await request(appWith(happy))
+      .patch('/api/v1/merchant/catalogue/options/O1/availability')
+      .set('Authorization', `Bearer ${owner()}`)
+      .send({ isAvailable: false });
+    expect(res.status).toBe(200);
+    expect(res.body.isAvailable).toBe(false);
+  });
+
+  it('forbids a customer from adding an option group (403)', async () => {
+    const res = await request(appWith(happy))
+      .post('/api/v1/merchant/catalogue/products/P1/option-groups')
+      .set('Authorization', `Bearer ${tokenFor(['customer'])}`)
+      .send({ name: 'Size' });
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects an option with no price delta (422)', async () => {
+    const res = await request(appWith(happy))
+      .post('/api/v1/merchant/catalogue/option-groups/G1/options')
+      .set('Authorization', `Bearer ${owner()}`)
+      .send({ name: 'Large' });
+    expect(res.status).toBe(422);
   });
 });
