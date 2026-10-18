@@ -64,6 +64,7 @@ const happy: CatalogueService = {
   addOption: () =>
     Promise.resolve({ ulid: 'O1', name: 'Large', priceDeltaCents: 10000, isAvailable: true }),
   setOptionAvailability: () => Promise.resolve({ ulid: 'O1', isAvailable: false }),
+  setInventory: () => Promise.resolve({ trackStock: true, quantity: 5, reserved: 0 }),
 };
 
 const owner = () => tokenFor(['merchant_owner']);
@@ -179,6 +180,23 @@ describe('merchant catalogue routes (RBAC + validation)', () => {
       .post('/api/v1/merchant/catalogue/option-groups/G1/options')
       .set('Authorization', `Bearer ${owner()}`)
       .send({ name: 'Large' });
+    expect(res.status).toBe(422);
+  });
+
+  it('sets inventory (200)', async () => {
+    const res = await request(appWith(happy))
+      .put('/api/v1/merchant/catalogue/products/P1/inventory')
+      .set('Authorization', `Bearer ${owner()}`)
+      .send({ trackStock: true, quantity: 5 });
+    expect(res.status).toBe(200);
+    expect(res.body.quantity).toBe(5);
+  });
+
+  it('rejects inventory with no quantity (422)', async () => {
+    const res = await request(appWith(happy))
+      .put('/api/v1/merchant/catalogue/products/P1/inventory')
+      .set('Authorization', `Bearer ${owner()}`)
+      .send({ trackStock: true });
     expect(res.status).toBe(422);
   });
 });

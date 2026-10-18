@@ -59,8 +59,8 @@ For each task:
 > https://github.com/Bravque/BojDeliveryPlatform (public).
 
 **Current status (2026-10-18):** **Phase 2 — Catalogue, inventory & merchants** in progress.
-Inc 1 merged; Inc 2 (catalogue CRUD + optimistic lock) open as **PR #9** (CI green, awaiting
-merge); Inc 3–5 pending. **Phases 0–1 complete & merged.** `main` is protected.
+Inc 1–3 merged; Inc 4 (inventory + reserve/release, with the concurrency test) in progress; Inc 5
+(public browse) pending. **Phases 0–1 complete & merged.** `main` is protected.
 
 ## How to resume (workflow + environment)
 - **Stack:** pnpm 9 + Turborepo monorepo. `apps/api` = Node/Express + Knex + MySQL;
@@ -83,7 +83,7 @@ merge); Inc 3–5 pending. **Phases 0–1 complete & merged.** `main` is protect
 ## Delivery phases (scope — ticked as merged)
 - [x] **Phase 0 — Foundations & scaffolding** (PR #1): monorepo, CI, config/money, DB+migrations, health, logging.
 - [x] **Phase 1 — Identity, roles & authorization** (PRs #2–#6; integration-test CI #7): phone-OTP + dashboard email/password (argon2id, lockout, no enumeration); RS256 access + rotating refresh with reuse detection; `requireAuth`, `/me`; RBAC policy (role + ownership + separation of duties); append-only audit log.
-- [ ] **Phase 2 — Catalogue, inventory & merchants** *(in progress)*: ✅ Inc1 merchants + admin onboarding (PR #8). ✅ Inc2 catalogue CRUD + merchant profile + optimistic price lock (PR #9). ⬜ Inc3 options & availability (min/max-select). ⬜ Inc4 inventory + reserve/release (concurrency). ⬜ Inc5 public browse (approved/open only; town-level filtering).
+- [ ] **Phase 2 — Catalogue, inventory & merchants** *(in progress)*: ✅ Inc1 merchants + admin onboarding (PR #8). ✅ Inc2 catalogue CRUD + merchant profile + optimistic price lock (PR #9). ✅ Inc3 options & availability (min/max-select) (PR #11). ⬜ Inc4 inventory + reserve/release (concurrency) *(in progress)*. ⬜ Inc5 public browse (approved/open only; town-level filtering).
 - [ ] **Phase 3 — Cart, pricing & order creation (no payment)**: cart, `POST /cart/quote`, zone resolution + delivery fee, promotions, `POST /orders` with stock reservation + full price snapshot, order state machine (draft/cancelled).
 - [ ] **Phase 4 — Payments (simulated) & ledger**: `PaymentGateway` + `SimulatedGateway`, STK initiate/callback/status, double-entry ledger, idempotency/dedupe, timeouts, reconciliation, refunds.
 - [ ] **Phase 5 — Rider onboarding, assignment & delivery**: onboarding/approval, online/offline, candidate selection, time-boxed offers, atomic accept, pickup/deliver with **PIN proof** (D7), earnings accrual.
@@ -102,7 +102,9 @@ merge); Inc 3–5 pending. **Phases 0–1 complete & merged.** `main` is protect
 | #6 | 1.5 | Dashboard email/password login |
 | #7 | — | MySQL integration-test CI job |
 | #8 | 2.1 | Merchant schema + admin onboarding |
-| #9 | 2.2 | Catalogue CRUD + profile + optimistic lock *(open)* |
+| #9 | 2.2 | Catalogue CRUD + profile + optimistic lock |
+| #10 | — | CLAUDE.md living status & roadmap |
+| #11 | 2.3 | Product option groups & options |
 
 ## Key locked decisions (see decision-log.md / ADRs)
 - **Launch (D1):** Migori; zones are configurable DB records; **spatial zone resolution deferred to Phase 3**.
