@@ -1,3 +1,4 @@
+import { createAuditService } from './auth/audit-service';
 import { loadAuthConfig } from './auth/config';
 import { createOtpService } from './auth/otp-service';
 import { createKnexAuthRepo } from './auth/repo';
@@ -25,6 +26,7 @@ function main(): void {
     otpService: createOtpService({ repo, sms, config: authConfig }),
     sessionService: createSessionService({ repo, config: authConfig }),
     userService: createUserService({ repo }),
+    auditService: createAuditService(repo),
     requireAuth: createRequireAuth({
       publicKey: authConfig.JWT_PUBLIC_KEY,
       issuer: authConfig.JWT_ISSUER,
