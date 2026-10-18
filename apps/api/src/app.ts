@@ -3,6 +3,7 @@ import express, { type Express } from 'express';
 import pinoHttp from 'pino-http';
 import { errorHandler, notFoundHandler } from './middleware/error';
 import type { Logger } from './platform/logger';
+import { adminRouter } from './routes/admin';
 import { authRouter, type AuthModule } from './routes/auth';
 import { healthRouter, type HealthDeps } from './routes/health';
 
@@ -38,6 +39,7 @@ export function createApp(deps: AppDeps): Express {
   if (deps.auth) {
     const apiV1 = express.Router();
     apiV1.use(authRouter(deps.auth));
+    apiV1.use(adminRouter(deps.auth.requireAuth, deps.auth.auditService));
     app.use('/api/v1', apiV1);
   }
 

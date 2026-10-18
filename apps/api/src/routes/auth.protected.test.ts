@@ -1,6 +1,7 @@
 import { generateKeyPairSync } from 'node:crypto';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
+import type { AuditService } from '../auth/audit-service';
 import type { OtpService } from '../auth/otp-service';
 import type { SessionService } from '../auth/session-service';
 import { signAccessToken } from '../auth/tokens';
@@ -52,6 +53,11 @@ const userService: UserService = {
     }),
 };
 
+const auditService: AuditService = {
+  record: () => Promise.resolve(),
+  listRecent: () => Promise.resolve([]),
+};
+
 function app() {
   return createApp({
     logger: createLogger({ level: 'silent' }),
@@ -60,6 +66,7 @@ function app() {
       otpService,
       sessionService,
       userService,
+      auditService,
       requireAuth: createRequireAuth({ publicKey, issuer: ISSUER, audience: AUDIENCE }),
     },
   });

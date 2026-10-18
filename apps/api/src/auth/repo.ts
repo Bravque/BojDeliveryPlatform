@@ -86,8 +86,37 @@ export interface UserRepo {
   getUserRoleCodes(userId: number): Promise<string[]>;
 }
 
+export interface AuditEntry {
+  actorUserId: number | null;
+  actorRole: string | null;
+  action: string;
+  entityType: string;
+  entityId: number | null;
+  ip: Buffer | null;
+  before: unknown;
+  after: unknown;
+}
+
+export interface AuditLogRecord {
+  id: number;
+  actorUserId: number | null;
+  actorRole: string | null;
+  action: string;
+  entityType: string;
+  entityId: number | null;
+  before: unknown;
+  after: unknown;
+  createdAt: Date;
+}
+
+/** Append-only audit trail (doc 06 §4). */
+export interface AuditRepo {
+  insertAuditLog(entry: AuditEntry): Promise<void>;
+  listRecentAuditLogs(limit: number): Promise<AuditLogRecord[]>;
+}
+
 /** The full Knex-backed repository implements every segment. */
-export type FullAuthRepo = AuthRepo & SessionRepo & UserRepo;
+export type FullAuthRepo = AuthRepo & SessionRepo & UserRepo & AuditRepo;
 
 interface UserRowDb {
   id: number | string;
@@ -124,6 +153,47 @@ function mapRefreshToken(row: RefreshTokenRowDb): RefreshTokenRecord {
     familyId: row.family_id,
     expiresAt: new Date(row.expires_at),
     revokedAt: row.revoked_at ? new Date(row.revoked_at) : null,
+  };
+}
+
+interface AuditLogRowDb {
+  id: number | string;
+  actor_user_id: number | string | null;
+  actor_role: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: number | string | null;
+  before_json: unknown;
+  after_json: unknown;
+  created_at: string | Date;
+}
+
+/** JSON columns come back as objects or strings depending on the driver; normalize to a value. */
+function parseJsonColumn(value: unknown): unknown {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  }
+  return value;
+}
+
+function mapAuditLog(row: AuditLogRowDb): AuditLogRecord {
+  return {
+    id: Number(row.id),
+    actorUserId: row.actor_user_id === null ? null : Number(row.actor_user_id),
+    actorRole: row.actor_role,
+    action: row.action,
+    entityType: row.entity_type,
+    entityId: row.entity_id === null ? null : Number(row.entity_id),
+    before: parseJsonColumn(row.before_json),
+    after: parseJsonColumn(row.after_json),
+    createdAt: new Date(row.created_at),
   };
 }
 
@@ -281,6 +351,24 @@ export function createKnexAuthRepo(db: Knex): FullAuthRepo {
       if (Object.keys(update).length > 0) {
         await db('user').where({ id: userId }).update(update);
       }
+    },
+
+    async insertAuditLog(entry) {
+      await db('audit_log').insert({
+        actor_user_id: entry.actorUserId,
+        actor_role: entry.actorRole,
+        action: entry.action,
+        entity_type: entry.entityType,
+        entity_id: entry.entityId,
+        ip: entry.ip,
+        before_json: entry.before === undefined ? null : JSON.stringify(entry.before),
+        after_json: entry.after === undefined ? null : JSON.stringify(entry.after),
+      });
+    },
+
+    async listRecentAuditLogs(limit) {
+      const rows = (await db('audit_log').orderBy('id', 'desc').limit(limit)) as AuditLogRowDb[];
+      return rows.map(mapAuditLog);
     },
   };
 }

@@ -1,5 +1,6 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
+import type { AuditService } from '../auth/audit-service';
 import type { OtpService } from '../auth/otp-service';
 import type { SessionService } from '../auth/session-service';
 import type { UserService } from '../auth/user-service';
@@ -28,11 +29,17 @@ const stubUser: UserService = {
   updateProfile: () => Promise.reject(new Error('not used')),
 };
 
+const stubAudit: AuditService = {
+  record: () => Promise.resolve(),
+  listRecent: () => Promise.resolve([]),
+};
+
 function appWith(overrides: Partial<AuthModule> = {}) {
   const auth: AuthModule = {
     otpService: happyOtp,
     sessionService: stubSession,
     userService: stubUser,
+    auditService: stubAudit,
     requireAuth: (_req, _res, next) => next(),
     ...overrides,
   };

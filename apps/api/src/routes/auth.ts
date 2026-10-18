@@ -1,15 +1,17 @@
 import express, { type RequestHandler, type Router } from 'express';
 import { z } from 'zod';
+import type { AuditService } from '../auth/audit-service';
 import type { OtpService } from '../auth/otp-service';
 import type { SessionService } from '../auth/session-service';
 import type { UserService } from '../auth/user-service';
 import { asyncHandler } from '../middleware/error';
 
-/** Everything the auth routes need, assembled in main.ts (or stubbed in tests). */
+/** Everything the auth + admin routes need, assembled in main.ts (or stubbed in tests). */
 export interface AuthModule {
   otpService: OtpService;
   sessionService: SessionService;
   userService: UserService;
+  auditService: AuditService;
   requireAuth: RequestHandler;
 }
 
