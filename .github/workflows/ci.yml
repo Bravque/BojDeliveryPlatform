@@ -71,3 +71,41 @@ jobs:
         run: pnpm --filter @boj/api run db:seed
       - name: Roll back migrations (verify reversibility)
         run: pnpm --filter @boj/api run db:rollback
+
+  integration:
+    name: Integration tests against MySQL
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: boj_test
+          MYSQL_USER: boj
+          MYSQL_PASSWORD: boj
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      NODE_ENV: test
+      DATABASE_URL: mysql://boj:boj@127.0.0.1:3306/boj_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build workspace packages (app imports @boj/config)
+        run: pnpm --filter @boj/config --filter @boj/money run build
+      - name: Apply migrations
+        run: pnpm --filter @boj/api run db:migrate
+      - name: Run integration tests
+        run: pnpm --filter @boj/api run test:int
