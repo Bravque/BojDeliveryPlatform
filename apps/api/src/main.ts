@@ -1,6 +1,7 @@
 import { createAuditService } from './auth/audit-service';
 import { loadAuthConfig } from './auth/config';
 import { createOtpService } from './auth/otp-service';
+import { createPasswordService } from './auth/password-service';
 import { createKnexAuthRepo } from './auth/repo';
 import { createSessionService } from './auth/session-service';
 import { MockSmsProvider } from './auth/sms/mock';
@@ -24,6 +25,7 @@ function main(): void {
   const sms = new MockSmsProvider({ logger, logBody: env.NODE_ENV !== 'production' });
   const auth = {
     otpService: createOtpService({ repo, sms, config: authConfig }),
+    passwordService: createPasswordService({ repo, config: authConfig }),
     sessionService: createSessionService({ repo, config: authConfig }),
     userService: createUserService({ repo }),
     auditService: createAuditService(repo),

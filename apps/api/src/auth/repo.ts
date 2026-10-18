@@ -115,8 +115,33 @@ export interface AuditRepo {
   listRecentAuditLogs(limit: number): Promise<AuditLogRecord[]>;
 }
 
+export interface PasswordLoginRecord {
+  id: number;
+  ulid: string;
+  phoneE164: string;
+  email: string | null;
+  displayName: string | null;
+  status: string;
+  passwordHash: string | null;
+  failedLoginCount: number;
+  lockedUntil: Date | null;
+}
+
+/** Dashboard email/password login with account lockout (doc 06 §2.2). */
+export interface PasswordRepo {
+  findLoginUserByEmail(email: string): Promise<PasswordLoginRecord | null>;
+  recordFailedLogin(
+    userId: number,
+    failedLoginCount: number,
+    lockedUntil: Date | null,
+  ): Promise<void>;
+  resetFailedLogins(userId: number): Promise<void>;
+  getUserRoleCodes(userId: number): Promise<string[]>;
+  insertRefreshToken(input: InsertRefreshTokenInput): Promise<void>;
+}
+
 /** The full Knex-backed repository implements every segment. */
-export type FullAuthRepo = AuthRepo & SessionRepo & UserRepo & AuditRepo;
+export type FullAuthRepo = AuthRepo & SessionRepo & UserRepo & AuditRepo & PasswordRepo;
 
 interface UserRowDb {
   id: number | string;
@@ -205,6 +230,26 @@ function mapUser(row: UserRowDb): UserRecord {
     email: row.email ?? null,
     displayName: row.display_name ?? null,
     status: row.status,
+  };
+}
+
+interface LoginUserRowDb extends UserRowDb {
+  password_hash: string | null;
+  failed_login_count: number | string;
+  locked_until: string | Date | null;
+}
+
+function mapLoginUser(row: LoginUserRowDb): PasswordLoginRecord {
+  return {
+    id: Number(row.id),
+    ulid: row.ulid,
+    phoneE164: row.phone_e164,
+    email: row.email ?? null,
+    displayName: row.display_name ?? null,
+    status: row.status,
+    passwordHash: row.password_hash ?? null,
+    failedLoginCount: Number(row.failed_login_count),
+    lockedUntil: row.locked_until ? new Date(row.locked_until) : null,
   };
 }
 
@@ -369,6 +414,21 @@ export function createKnexAuthRepo(db: Knex): FullAuthRepo {
     async listRecentAuditLogs(limit) {
       const rows = (await db('audit_log').orderBy('id', 'desc').limit(limit)) as AuditLogRowDb[];
       return rows.map(mapAuditLog);
+    },
+
+    async findLoginUserByEmail(email) {
+      const row = (await db('user').where({ email }).first()) as LoginUserRowDb | undefined;
+      return row ? mapLoginUser(row) : null;
+    },
+
+    async recordFailedLogin(userId, failedLoginCount, lockedUntil) {
+      await db('user')
+        .where({ id: userId })
+        .update({ failed_login_count: failedLoginCount, locked_until: lockedUntil });
+    },
+
+    async resetFailedLogins(userId) {
+      await db('user').where({ id: userId }).update({ failed_login_count: 0, locked_until: null });
     },
   };
 }

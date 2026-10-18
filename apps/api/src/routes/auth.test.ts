@@ -2,6 +2,7 @@ import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import type { AuditService } from '../auth/audit-service';
 import type { OtpService } from '../auth/otp-service';
+import type { PasswordService } from '../auth/password-service';
 import type { SessionService } from '../auth/session-service';
 import type { UserService } from '../auth/user-service';
 import { createApp } from '../app';
@@ -34,9 +35,19 @@ const stubAudit: AuditService = {
   listRecent: () => Promise.resolve([]),
 };
 
+const happyPassword: PasswordService = {
+  login: () =>
+    Promise.resolve({
+      access: 'access-jwt',
+      refresh: 'refresh-tok',
+      user: { ulid: 'U1', email: 'admin@boj.local', displayName: 'Dev Admin', roles: ['admin'] },
+    }),
+};
+
 function appWith(overrides: Partial<AuthModule> = {}) {
   const auth: AuthModule = {
     otpService: happyOtp,
+    passwordService: happyPassword,
     sessionService: stubSession,
     userService: stubUser,
     auditService: stubAudit,
@@ -89,5 +100,33 @@ describe('POST /api/v1/auth/otp/verify', () => {
       .send({ phone: '0712345678', code: '000000' });
     expect(res.status).toBe(401);
     expect(res.body.error.code).toBe('UNAUTHORIZED');
+  });
+});
+
+describe('POST /api/v1/auth/password/login', () => {
+  it('returns tokens on success', async () => {
+    const res = await request(appWith())
+      .post('/api/v1/auth/password/login')
+      .send({ email: 'admin@boj.local', password: 'secret' });
+    expect(res.status).toBe(200);
+    expect(res.body.access).toBe('access-jwt');
+    expect(res.body.user.roles).toEqual(['admin']);
+  });
+
+  it('rejects missing fields with 422', async () => {
+    const res = await request(appWith())
+      .post('/api/v1/auth/password/login')
+      .send({ email: 'admin@boj.local' });
+    expect(res.status).toBe(422);
+  });
+
+  it('maps invalid credentials to 401', async () => {
+    const failing: PasswordService = {
+      login: () => Promise.reject(unauthorized('Invalid email or password')),
+    };
+    const res = await request(appWith({ passwordService: failing }))
+      .post('/api/v1/auth/password/login')
+      .send({ email: 'x@y.z', password: 'bad' });
+    expect(res.status).toBe(401);
   });
 });

@@ -27,6 +27,8 @@ function config(): AuthConfig {
     OTP_REQUEST_WINDOW_SEC: 3600,
     OTP_MAX_PER_PHONE: 5,
     OTP_MAX_PER_IP: 20,
+    PASSWORD_MAX_ATTEMPTS: 5,
+    PASSWORD_LOCKOUT_SEC: 900,
     SMS_PROVIDER: 'mock',
   };
 }

@@ -31,6 +31,10 @@ const authEnvSchema = z.object({
   OTP_MAX_PER_PHONE: z.coerce.number().int().positive().default(5),
   OTP_MAX_PER_IP: z.coerce.number().int().positive().default(20),
 
+  // Dashboard email/password login (doc 06 §2.2).
+  PASSWORD_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
+  PASSWORD_LOCKOUT_SEC: z.coerce.number().int().positive().default(900), // 15 min
+
   SMS_PROVIDER: z.enum(['mock']).default('mock'),
 });
 
