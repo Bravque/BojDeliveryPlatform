@@ -1,15 +1,14 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import type { OtpService } from '../auth/otp-service';
+import type { SessionService } from '../auth/session-service';
+import type { UserService } from '../auth/user-service';
 import { createApp } from '../app';
 import { unauthorized } from '../http/errors';
 import { createLogger } from '../platform/logger';
+import type { AuthModule } from './auth';
 
-function appWith(otpService: OtpService) {
-  return createApp({ logger: createLogger({ level: 'silent' }), version: 'test', otpService });
-}
-
-const happy: OtpService = {
+const happyOtp: OtpService = {
   requestOtp: () => Promise.resolve(),
   verifyOtp: () =>
     Promise.resolve({
@@ -19,9 +18,30 @@ const happy: OtpService = {
     }),
 };
 
+const stubSession: SessionService = {
+  refresh: () => Promise.reject(new Error('not used')),
+  logout: () => Promise.resolve(),
+};
+
+const stubUser: UserService = {
+  getProfile: () => Promise.reject(new Error('not used')),
+  updateProfile: () => Promise.reject(new Error('not used')),
+};
+
+function appWith(overrides: Partial<AuthModule> = {}) {
+  const auth: AuthModule = {
+    otpService: happyOtp,
+    sessionService: stubSession,
+    userService: stubUser,
+    requireAuth: (_req, _res, next) => next(),
+    ...overrides,
+  };
+  return createApp({ logger: createLogger({ level: 'silent' }), version: 'test', auth });
+}
+
 describe('POST /api/v1/auth/otp/request', () => {
   it('accepts a valid request with 202', async () => {
-    const res = await request(appWith(happy))
+    const res = await request(appWith())
       .post('/api/v1/auth/otp/request')
       .send({ phone: '0712345678' });
     expect(res.status).toBe(202);
@@ -29,7 +49,7 @@ describe('POST /api/v1/auth/otp/request', () => {
   });
 
   it('rejects a missing phone with a 422 envelope', async () => {
-    const res = await request(appWith(happy)).post('/api/v1/auth/otp/request').send({});
+    const res = await request(appWith()).post('/api/v1/auth/otp/request').send({});
     expect(res.status).toBe(422);
     expect(res.body.error.code).toBe('VALIDATION_FAILED');
   });
@@ -37,7 +57,7 @@ describe('POST /api/v1/auth/otp/request', () => {
 
 describe('POST /api/v1/auth/otp/verify', () => {
   it('returns tokens and profile on success', async () => {
-    const res = await request(appWith(happy))
+    const res = await request(appWith())
       .post('/api/v1/auth/otp/verify')
       .send({ phone: '0712345678', code: '123456' });
     expect(res.status).toBe(200);
@@ -46,7 +66,7 @@ describe('POST /api/v1/auth/otp/verify', () => {
   });
 
   it('rejects a missing code with 422', async () => {
-    const res = await request(appWith(happy))
+    const res = await request(appWith())
       .post('/api/v1/auth/otp/verify')
       .send({ phone: '0712345678' });
     expect(res.status).toBe(422);
@@ -57,7 +77,7 @@ describe('POST /api/v1/auth/otp/verify', () => {
       requestOtp: () => Promise.resolve(),
       verifyOtp: () => Promise.reject(unauthorized('Invalid or expired code')),
     };
-    const res = await request(appWith(failing))
+    const res = await request(appWith({ otpService: failing }))
       .post('/api/v1/auth/otp/verify')
       .send({ phone: '0712345678', code: '000000' });
     expect(res.status).toBe(401);

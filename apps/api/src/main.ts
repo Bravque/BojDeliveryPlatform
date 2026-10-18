@@ -1,8 +1,11 @@
 import { loadAuthConfig } from './auth/config';
 import { createOtpService } from './auth/otp-service';
 import { createKnexAuthRepo } from './auth/repo';
+import { createSessionService } from './auth/session-service';
 import { MockSmsProvider } from './auth/sms/mock';
+import { createUserService } from './auth/user-service';
 import { createApp } from './app';
+import { createRequireAuth } from './middleware/auth';
 import { loadEnv } from './env';
 import { buildKnexConfig, checkDbHealth, createDb } from './platform/db';
 import { createLogger } from './platform/logger';
@@ -16,14 +19,24 @@ function main(): void {
   const db = createDb(buildKnexConfig({ DATABASE_URL: env.DATABASE_URL }));
 
   // Phase 1 uses the mock SMS provider; it logs the OTP body only outside production (D12).
+  const repo = createKnexAuthRepo(db);
   const sms = new MockSmsProvider({ logger, logBody: env.NODE_ENV !== 'production' });
-  const otpService = createOtpService({ repo: createKnexAuthRepo(db), sms, config: authConfig });
+  const auth = {
+    otpService: createOtpService({ repo, sms, config: authConfig }),
+    sessionService: createSessionService({ repo, config: authConfig }),
+    userService: createUserService({ repo }),
+    requireAuth: createRequireAuth({
+      publicKey: authConfig.JWT_PUBLIC_KEY,
+      issuer: authConfig.JWT_ISSUER,
+      audience: authConfig.JWT_AUDIENCE,
+    }),
+  };
 
   const app = createApp({
     logger,
     version: VERSION,
     checkReadiness: async () => ({ db: await checkDbHealth(db) }),
-    otpService,
+    auth,
   });
 
   const server = app.listen(env.PORT, () => {

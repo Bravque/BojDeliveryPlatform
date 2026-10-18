@@ -1,10 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import express, { type Express } from 'express';
 import pinoHttp from 'pino-http';
-import type { OtpService } from './auth/otp-service';
 import { errorHandler, notFoundHandler } from './middleware/error';
 import type { Logger } from './platform/logger';
-import { authRouter } from './routes/auth';
+import { authRouter, type AuthModule } from './routes/auth';
 import { healthRouter, type HealthDeps } from './routes/health';
 
 export interface AppDeps {
@@ -12,7 +11,7 @@ export interface AppDeps {
   version: string;
   checkReadiness?: HealthDeps['checkReadiness'];
   /** When provided, mounts the `/api/v1` auth endpoints. */
-  otpService?: OtpService;
+  auth?: AuthModule;
 }
 
 /** Build the Express application. Pure factory — no network/DB side effects. */
@@ -36,9 +35,9 @@ export function createApp(deps: AppDeps): Express {
 
   app.use(healthRouter({ version: deps.version, checkReadiness: deps.checkReadiness }));
 
-  if (deps.otpService) {
+  if (deps.auth) {
     const apiV1 = express.Router();
-    apiV1.use(authRouter(deps.otpService));
+    apiV1.use(authRouter(deps.auth));
     app.use('/api/v1', apiV1);
   }
 
