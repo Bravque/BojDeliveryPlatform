@@ -7,6 +7,8 @@ import { newUlid } from '../auth/crypto';
 import { createKnexAuthRepo } from '../auth/repo';
 import { signAccessToken } from '../auth/tokens';
 import { createApp } from '../app';
+import { createCatalogueService } from '../catalogue/catalogue-service';
+import { createKnexCatalogueRepo } from '../catalogue/repo';
 import { createMerchantService } from '../merchant/merchant-service';
 import { createKnexMerchantRepo } from '../merchant/repo';
 import { createRequireAuth } from '../middleware/auth';
@@ -43,6 +45,7 @@ describe.skipIf(!DATABASE_URL)('merchant onboarding integration (real MySQL)', (
       version: 'int',
       merchant: {
         merchantService,
+        catalogueService: createCatalogueService({ repo: createKnexCatalogueRepo(db) }),
         requireAuth: createRequireAuth({ publicKey, issuer: ISSUER, audience: AUDIENCE }),
       },
     });
