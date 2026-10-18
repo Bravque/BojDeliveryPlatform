@@ -47,13 +47,19 @@ docker compose up -d
 # 5. Run database migrations (requires a reachable MySQL from DATABASE_URL)
 pnpm db:migrate
 
-# 6. (optional) load synthetic dev data (inactive Migori town + CBD zone)
+# 6. (optional) load synthetic dev data (inactive Migori town + CBD zone;
+#    a dev admin dashboard user — admin@boj.local / DevAdmin!2026, DEV ONLY)
 pnpm db:seed
 
 # 7. Start the API in watch mode
 pnpm --filter @boj/api dev
 # -> GET http://localhost:4000/health
 ```
+
+> **Auth (Phase 1):** phone-OTP for customers/riders (`POST /api/v1/auth/otp/request` →
+> `/verify`; the dev mock SMS logs the code) and email/password for dashboard users
+> (`POST /api/v1/auth/password/login`). The seeded `admin@boj.local` / `DevAdmin!2026` is a
+> **development-only** account and must never exist in production.
 
 ## Common scripts (run from the repo root)
 

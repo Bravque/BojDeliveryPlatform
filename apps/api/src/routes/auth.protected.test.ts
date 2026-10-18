@@ -3,6 +3,7 @@ import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import type { AuditService } from '../auth/audit-service';
 import type { OtpService } from '../auth/otp-service';
+import type { PasswordService } from '../auth/password-service';
 import type { SessionService } from '../auth/session-service';
 import { signAccessToken } from '../auth/tokens';
 import type { UserService } from '../auth/user-service';
@@ -57,6 +58,9 @@ const auditService: AuditService = {
   record: () => Promise.resolve(),
   listRecent: () => Promise.resolve([]),
 };
+const passwordService: PasswordService = {
+  login: () => Promise.reject(new Error('not used')),
+};
 
 function app() {
   return createApp({
@@ -64,6 +68,7 @@ function app() {
     version: 'test',
     auth: {
       otpService,
+      passwordService,
       sessionService,
       userService,
       auditService,

@@ -2,6 +2,7 @@ import express, { type RequestHandler, type Router } from 'express';
 import { z } from 'zod';
 import type { AuditService } from '../auth/audit-service';
 import type { OtpService } from '../auth/otp-service';
+import type { PasswordService } from '../auth/password-service';
 import type { SessionService } from '../auth/session-service';
 import type { UserService } from '../auth/user-service';
 import { asyncHandler } from '../middleware/error';
@@ -9,6 +10,7 @@ import { asyncHandler } from '../middleware/error';
 /** Everything the auth + admin routes need, assembled in main.ts (or stubbed in tests). */
 export interface AuthModule {
   otpService: OtpService;
+  passwordService: PasswordService;
   sessionService: SessionService;
   userService: UserService;
   auditService: AuditService;
@@ -17,6 +19,7 @@ export interface AuthModule {
 
 const requestSchema = z.object({ phone: z.string().min(1) });
 const verifySchema = z.object({ phone: z.string().min(1), code: z.string().min(1) });
+const passwordLoginSchema = z.object({ email: z.string().min(1), password: z.string().min(1) });
 const refreshSchema = z.object({ refresh: z.string().min(1) });
 const profilePatchSchema = z.object({ displayName: z.string().min(1).max(120) });
 
@@ -42,6 +45,14 @@ export function authRouter(auth: AuthModule): Router {
     asyncHandler(async (req, res) => {
       const { phone, code } = verifySchema.parse(req.body);
       res.status(200).json(await auth.otpService.verifyOtp({ phone, code, ip: req.ip }));
+    }),
+  );
+
+  router.post(
+    '/auth/password/login',
+    asyncHandler(async (req, res) => {
+      const { email, password } = passwordLoginSchema.parse(req.body);
+      res.status(200).json(await auth.passwordService.login({ email, password }));
     }),
   );
 

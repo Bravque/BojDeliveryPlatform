@@ -34,6 +34,8 @@ function testConfig(overrides: Partial<AuthConfig> = {}): AuthConfig {
     OTP_REQUEST_WINDOW_SEC: 3600,
     OTP_MAX_PER_PHONE: 3,
     OTP_MAX_PER_IP: 5,
+    PASSWORD_MAX_ATTEMPTS: 5,
+    PASSWORD_LOCKOUT_SEC: 900,
     SMS_PROVIDER: 'mock',
     ...overrides,
   };
