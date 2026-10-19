@@ -10,7 +10,8 @@ import type {
 import type { OrderStatus } from '../orders/state-machine';
 import { createCaptureService, type CaptureRepos } from './capture-service';
 import type { StkCallback } from './capture';
-import type { PaymentRecord, PaymentsRepo } from './repo';
+import type { RefundRecord } from './refund';
+import type { InsertRefundInput, OrderPaymentStatus, PaymentRecord, PaymentsRepo } from './repo';
 
 class FakeLedgerRepo implements LedgerRepo {
   accounts = new Map<string, LedgerAccount>();
@@ -154,6 +155,48 @@ class FakeCapturePaymentsRepo implements PaymentsRepo {
   async listOpenPayments() {
     return [];
   }
+  // Refund path — the auto-refund branch inserts a refund, reverses the payment and flags the order.
+  refunds: RefundRecord[] = [];
+  private seqR = 0;
+  findRefundByIdempotencyKey(key: string): Promise<RefundRecord | null> {
+    return Promise.resolve(this.refunds.find((r) => r.idempotencyKey === key) ?? null);
+  }
+  insertRefund(input: InsertRefundInput): Promise<number> {
+    const id = ++this.seqR;
+    this.refunds.push({ ...input, id, approvedBy: null, providerRef: null });
+    return Promise.resolve(id);
+  }
+  markPaymentReversed(_id: number, receipt: string | null): Promise<void> {
+    this.payment.status = 'reversed';
+    this.payment.mpesaReceipt = receipt;
+    return Promise.resolve();
+  }
+  setOrderPaymentStatus(_orderId: number, paymentStatus: OrderPaymentStatus): Promise<void> {
+    this.paymentStatus = paymentStatus;
+    return Promise.resolve();
+  }
+  async findOrderForRefund() {
+    return null;
+  }
+  async findSucceededPaymentByOrderId() {
+    return null;
+  }
+  async sumCompletedRefunds() {
+    return 0;
+  }
+  findRefundByUlid(ulid: string): Promise<RefundRecord | null> {
+    return Promise.resolve(this.refunds.find((r) => r.ulid === ulid) ?? null);
+  }
+  async lockRefundByUlid() {
+    return null;
+  }
+  async markRefundProcessing() {}
+  async markRefundRejected() {}
+  async markRefundCompleted() {}
+  async markRefundFailed() {}
+  async findUserUlidById() {
+    return null;
+  }
 }
 
 function makeSvc() {
@@ -241,6 +284,30 @@ describe('capture service — processStkResult', () => {
     expect(await svc.processStkResult(success)).toBe('captured');
     // A fresh event (different result code) on an already-succeeded payment is a no-op.
     expect(await svc.processStkResult(failure)).toBe('already_final');
+  });
+
+  it('auto-refunds a late success after a local failure (funds were actually collected)', async () => {
+    const { repo, ledger, svc } = makeSvc();
+    // Local failure first (timeout/cancel) → payment failed, nothing posted.
+    expect(await svc.processStkResult(failure)).toBe('failed');
+    expect(ledger.txns).toHaveLength(0);
+    // Then the gateway confirms the funds really arrived → idempotent auto-refund.
+    expect(await svc.processStkResult(success)).toBe('auto_refunded');
+    expect(repo.payment.status).toBe('reversed');
+    expect(repo.paymentStatus).toBe('refunded');
+    expect(repo.refunds).toHaveLength(1);
+    expect(repo.refunds[0]).toMatchObject({ source: 'auto', status: 'completed' });
+    const debit = ledger.entries
+      .filter((e) => e.direction === 'debit')
+      .reduce((s, e) => s + e.amountCents, 0);
+    const credit = ledger.entries
+      .filter((e) => e.direction === 'credit')
+      .reduce((s, e) => s + e.amountCents, 0);
+    expect(debit).toBe(credit);
+    expect(debit).toBe(37_180);
+    // A replay of the same late success is deduped — no second refund.
+    expect(await svc.processStkResult(success)).toBe('duplicate');
+    expect(repo.refunds).toHaveLength(1);
   });
 });
 

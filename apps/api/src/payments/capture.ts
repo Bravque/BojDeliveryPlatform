@@ -15,7 +15,13 @@ export interface StkCallback {
 }
 
 export type CaptureOutcome =
-  'captured' | 'failed' | 'duplicate' | 'unknown_payment' | 'already_final' | 'amount_mismatch';
+  | 'captured'
+  | 'failed'
+  | 'duplicate'
+  | 'unknown_payment'
+  | 'already_final'
+  | 'amount_mismatch'
+  | 'auto_refunded';
 
 /** The order money snapshot needed to post the capture. */
 export interface OrderMoneySnapshot {

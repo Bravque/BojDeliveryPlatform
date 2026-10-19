@@ -1,6 +1,8 @@
 import { newUlid } from '../auth/crypto';
 import type {
   PaymentGateway,
+  ReversalInitiateResult,
+  ReversalInput,
   StkInitiateInput,
   StkInitiateResult,
   StkStatus,
@@ -63,5 +65,13 @@ export class SimulatedGateway implements PaymentGateway {
       amountCents: null,
       mpesaReceipt: null,
     });
+  }
+
+  /**
+   * Accept a reversal and return a deterministic provider id. The outcome (completed/failed) is
+   * confirmed out-of-band via the dev-simulate refund endpoint, mirroring the STK capture seam.
+   */
+  initiateReversal(input: ReversalInput): Promise<ReversalInitiateResult> {
+    return Promise.resolve({ reversalId: `SIMREV-${input.reference.slice(-12).toUpperCase()}` });
   }
 }

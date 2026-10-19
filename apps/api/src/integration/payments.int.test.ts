@@ -11,6 +11,7 @@ import { createRequireAuth } from '../middleware/auth';
 import { createCaptureService } from '../payments/capture-service';
 import { createPaymentService } from '../payments/payment-service';
 import { createReconcileService } from '../payments/reconcile-service';
+import { createRefundService } from '../payments/refund-service';
 import { createKnexPaymentsRepo } from '../payments/repo';
 import { SimulatedGateway } from '../payments/simulated-gateway';
 import { buildKnexConfig, createDb } from '../platform/db';
@@ -60,6 +61,15 @@ describe.skipIf(!DATABASE_URL)('payments integration (real MySQL)', () => {
           gateway,
           captureService,
           ledgerReadRepo: createKnexLedgerRepo(db),
+        }),
+        refundService: createRefundService({
+          readRepo: createKnexPaymentsRepo(db),
+          withTransaction: (work) =>
+            db.transaction((trx) =>
+              work({ payments: createKnexPaymentsRepo(trx), ledger: createKnexLedgerRepo(trx) }),
+            ),
+          ledgerService: createLedgerService(),
+          gateway,
         }),
         requireAuth: createRequireAuth({ publicKey, issuer: ISSUER, audience: AUDIENCE }),
         webhookToken: 'int-webhook-token',

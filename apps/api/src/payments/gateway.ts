@@ -27,9 +27,26 @@ export interface StkStatusResult {
   mpesaReceipt: string | null;
 }
 
+/** Input for a refund reversal (Daraja reversal / B2C in Phase 8; simulated until then). */
+export interface ReversalInput {
+  /** The M-Pesa receipt of the captured payment being reversed, when known. */
+  originalReceipt: string | null;
+  checkoutRequestId: string | null;
+  amountCents: number;
+  /** A caller reference echoed back by the provider (the refund ulid). */
+  reference: string;
+}
+
+export interface ReversalInitiateResult {
+  /** Provider-side reversal / B2C id, stored on the refund as `provider_ref`. */
+  reversalId: string;
+}
+
 export interface PaymentGateway {
   /** Begin an STK push; returns the correlation ids. */
   initiateStkPush(input: StkInitiateInput): Promise<StkInitiateResult>;
   /** Query the current STK result (used by capture confirmation + reconciliation). */
   queryStkStatus(checkoutRequestId: string): Promise<StkStatusResult>;
+  /** Begin a refund reversal; completion is confirmed out-of-band (dev-simulate / reconcile). */
+  initiateReversal(input: ReversalInput): Promise<ReversalInitiateResult>;
 }

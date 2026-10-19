@@ -7,6 +7,7 @@ import { createRequireAuth } from '../middleware/auth';
 import type { CaptureService } from '../payments/capture-service';
 import type { PaymentService, PaymentView } from '../payments/payment-service';
 import type { ReconcileService } from '../payments/reconcile-service';
+import type { RefundService } from '../payments/refund-service';
 import { createLogger } from '../platform/logger';
 
 const WEBHOOK_TOKEN = 'test-webhook-token';
@@ -59,6 +60,24 @@ const reconcileService: ReconcileService = {
     }),
 };
 
+const refundView = {
+  ulid: 'REF1',
+  orderUlid: 'ORD1',
+  status: 'requested',
+  source: 'manual',
+  amountCents: 40_200,
+  reason: 'customer dispute',
+  providerRef: null,
+};
+const refundService: RefundService = {
+  requestRefund: () => Promise.resolve(refundView),
+  approveRefund: () => Promise.resolve({ ...refundView, status: 'processing' }),
+  rejectRefund: () => Promise.resolve({ ...refundView, status: 'rejected' }),
+  processReversalResult: () => Promise.resolve('completed'),
+  simulate: () => Promise.resolve('completed'),
+  getRefund: () => Promise.resolve(refundView),
+};
+
 function app() {
   return createApp({
     logger: createLogger({ level: 'silent' }),
@@ -67,6 +86,7 @@ function app() {
       paymentService,
       captureService,
       reconcileService,
+      refundService,
       requireAuth: createRequireAuth({ publicKey, issuer: ISSUER, audience: AUDIENCE }),
       webhookToken: WEBHOOK_TOKEN,
       allowDevSimulate: true,
@@ -186,5 +206,68 @@ describe('admin reconciliation', () => {
       .set('Authorization', `Bearer ${tokenFor(['finance'])}`);
     expect(ok.status).toBe(200);
     expect(ok.body.ledgerBalanced).toBe(true);
+  });
+});
+
+describe('refunds', () => {
+  it('request: requires an Idempotency-Key, forbids customer, allows ops (201)', async () => {
+    // Customer is forbidden regardless of key.
+    expect(
+      (
+        await request(app())
+          .post('/api/v1/orders/ORD1/refunds')
+          .set(auth())
+          .set('Idempotency-Key', 'r1')
+          .send({ amountCents: 40_200, reason: 'dispute' })
+      ).status,
+    ).toBe(403);
+    // Ops without a key → 400.
+    expect(
+      (
+        await request(app())
+          .post('/api/v1/orders/ORD1/refunds')
+          .set('Authorization', `Bearer ${tokenFor(['ops'])}`)
+          .send({ amountCents: 40_200, reason: 'dispute' })
+      ).status,
+    ).toBe(400);
+    const ok = await request(app())
+      .post('/api/v1/orders/ORD1/refunds')
+      .set('Authorization', `Bearer ${tokenFor(['ops'])}`)
+      .set('Idempotency-Key', 'r1')
+      .send({ amountCents: 40_200, reason: 'dispute' });
+    expect(ok.status).toBe(201);
+    expect(ok.body.status).toBe('requested');
+  });
+
+  it('approve: forbids ops (no refund:approve), allows finance (200 → processing)', async () => {
+    expect(
+      (
+        await request(app())
+          .post('/api/v1/refunds/REF1/approve')
+          .set('Authorization', `Bearer ${tokenFor(['ops'])}`)
+      ).status,
+    ).toBe(403);
+    const ok = await request(app())
+      .post('/api/v1/refunds/REF1/approve')
+      .set('Authorization', `Bearer ${tokenFor(['finance'])}`);
+    expect(ok.status).toBe(200);
+    expect(ok.body.status).toBe('processing');
+  });
+
+  it('dev-simulate: admin only (200)', async () => {
+    expect(
+      (
+        await request(app())
+          .post('/api/v1/dev/refunds/REF1/simulate')
+          .set('Authorization', `Bearer ${tokenFor(['finance'])}`)
+          .send({ outcome: 'success' })
+      ).status,
+    ).toBe(403);
+    const ok = await request(app())
+      .post('/api/v1/dev/refunds/REF1/simulate')
+      .set('Authorization', `Bearer ${tokenFor(['admin'])}`)
+      .send({ outcome: 'success' });
+    expect(ok.status).toBe(200);
+    expect(ok.body.status).toBe('completed');
   });
 });
