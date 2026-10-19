@@ -79,6 +79,23 @@ class FakePaymentsRepo implements PaymentsRepo {
     this.history.push({ fromStatus: input.fromStatus, toStatus: input.toStatus });
     return Promise.resolve();
   }
+  // Capture-path methods are unused by the payment (initiation) service tests.
+  async findPaymentByCheckoutRequestId() {
+    return null;
+  }
+  async insertPaymentEventDedup() {
+    return true;
+  }
+  async markPaymentSucceeded() {}
+  async markPaymentFailed() {}
+  async getOrderMoneySnapshot() {
+    return null;
+  }
+  async setOrderStatusAndPayment() {}
+  async listOrderStockLines() {
+    return [];
+  }
+  async releaseStock() {}
 }
 
 let pushes = 0;

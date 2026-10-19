@@ -8,6 +8,8 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   // Active payment gateway (doc 07 §2). Only 'simulated' is implemented until Daraja go-live (Phase 8).
   PAYMENT_PROVIDER: z.enum(['simulated', 'daraja_sandbox', 'daraja_prod']).default('simulated'),
+  // Shared secret for the M-Pesa STK callback webhook (doc 07 §3). When unset the webhook rejects.
+  MPESA_WEBHOOK_TOKEN: z.string().min(1).optional(),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;

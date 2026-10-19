@@ -1,4 +1,5 @@
 import type { Knex } from 'knex';
+import type { OrderMoneySnapshot } from './capture';
 import type { ActorType, OrderStatus } from '../orders/state-machine';
 
 /**
@@ -65,6 +66,29 @@ export interface PaymentsRepo {
     actorType: ActorType;
     actorUserId: number | null;
   }): Promise<void>;
+
+  // --- capture path (increment 3) ---
+  findPaymentByCheckoutRequestId(checkoutRequestId: string): Promise<PaymentRecord | null>;
+  /** Insert the raw event; returns false if `dedupeKey` already exists (duplicate callback). */
+  insertPaymentEventDedup(input: {
+    paymentId: number | null;
+    source: 'stk_callback' | 'status_query' | 'reconciliation' | 'manual';
+    dedupeKey: string;
+    resultCode: number | null;
+    rawPayload: unknown;
+  }): Promise<boolean>;
+  markPaymentSucceeded(paymentId: number, mpesaReceipt: string | null): Promise<void>;
+  markPaymentFailed(paymentId: number, status: 'failed' | 'timed_out'): Promise<void>;
+  getOrderMoneySnapshot(
+    orderId: number,
+  ): Promise<(OrderMoneySnapshot & { status: OrderStatus }) | null>;
+  setOrderStatusAndPayment(
+    orderId: number,
+    status: OrderStatus,
+    paymentStatus: 'paid' | 'failed',
+  ): Promise<void>;
+  listOrderStockLines(orderId: number): Promise<Array<{ productId: number; quantity: number }>>;
+  releaseStock(productId: number, quantity: number): Promise<void>;
 }
 
 interface PaymentRowDb {
@@ -198,6 +222,106 @@ export function createKnexPaymentsRepo(exec: Knex): PaymentsRepo {
         actor_type: input.actorType,
         actor_user_id: input.actorUserId,
       });
+    },
+
+    async findPaymentByCheckoutRequestId(checkoutRequestId) {
+      const row = (await exec('payment')
+        .where({ checkout_request_id: checkoutRequestId })
+        .first()) as PaymentRowDb | undefined;
+      return row ? mapPayment(row) : null;
+    },
+
+    async insertPaymentEventDedup(input) {
+      const inserted = await exec('payment_event')
+        .insert({
+          payment_id: input.paymentId,
+          source: input.source,
+          dedupe_key: input.dedupeKey,
+          result_code: input.resultCode,
+          raw_payload: JSON.stringify(input.rawPayload),
+        })
+        .onConflict('dedupe_key')
+        .ignore();
+      // knex returns affected rows; 0 means the dedupe_key already existed.
+      const affected = Array.isArray(inserted) ? (inserted[0] ?? 0) : inserted;
+      return Number(affected) > 0;
+    },
+
+    async markPaymentSucceeded(paymentId, mpesaReceipt) {
+      await exec('payment')
+        .where({ id: paymentId })
+        .update({
+          status: 'succeeded',
+          mpesa_receipt: mpesaReceipt,
+          settled_at: exec.raw('CURRENT_TIMESTAMP(3)'),
+        });
+    },
+
+    async markPaymentFailed(paymentId, status) {
+      await exec('payment').where({ id: paymentId }).update({ status });
+    },
+
+    async getOrderMoneySnapshot(orderId) {
+      const row = (await exec('order')
+        .where({ id: orderId })
+        .first(
+          'id',
+          'merchant_id',
+          'status',
+          'subtotal_cents',
+          'delivery_fee_cents',
+          'service_fee_cents',
+          'discount_cents',
+          'total_cents',
+          'commission_cents',
+        )) as
+        | {
+            id: number | string;
+            merchant_id: number | string;
+            status: OrderStatus;
+            subtotal_cents: number | string;
+            delivery_fee_cents: number | string;
+            service_fee_cents: number | string;
+            discount_cents: number | string;
+            total_cents: number | string;
+            commission_cents: number | string;
+          }
+        | undefined;
+      if (!row) {
+        return null;
+      }
+      return {
+        id: Number(row.id),
+        merchantId: Number(row.merchant_id),
+        status: row.status,
+        subtotalCents: Number(row.subtotal_cents),
+        deliveryFeeCents: Number(row.delivery_fee_cents),
+        serviceFeeCents: Number(row.service_fee_cents),
+        discountCents: Number(row.discount_cents),
+        totalCents: Number(row.total_cents),
+        commissionCents: Number(row.commission_cents),
+      };
+    },
+
+    async setOrderStatusAndPayment(orderId, status, paymentStatus) {
+      await exec('order').where({ id: orderId }).update({ status, payment_status: paymentStatus });
+    },
+
+    async listOrderStockLines(orderId) {
+      const rows = (await exec('order_item')
+        .where({ order_id: orderId })
+        .select('product_id', 'quantity')) as Array<{
+        product_id: number | string;
+        quantity: number | string;
+      }>;
+      return rows.map((r) => ({ productId: Number(r.product_id), quantity: Number(r.quantity) }));
+    },
+
+    async releaseStock(productId, quantity) {
+      await exec('inventory')
+        .where('product_id', productId)
+        .where('track_stock', true)
+        .update({ reserved: exec.raw('GREATEST(reserved - ?, 0)', [quantity]) });
     },
   };
 }

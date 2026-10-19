@@ -17,11 +17,14 @@ import { createCatalogueService } from './catalogue/catalogue-service';
 import { createKnexCatalogueRepo } from './catalogue/repo';
 import { createFeeService } from './fees/fee-service';
 import { createKnexDeliveryFeeRuleRepo } from './fees/repo';
+import { createLedgerService } from './ledger/ledger-service';
+import { createKnexLedgerRepo } from './ledger/repo';
 import { createMerchantService } from './merchant/merchant-service';
 import { createKnexMerchantRepo } from './merchant/repo';
 import { createRequireAuth } from './middleware/auth';
 import { createOrderService } from './orders/order-service';
 import { createKnexOrdersRepo } from './orders/repo';
+import { createCaptureService } from './payments/capture-service';
 import type { PaymentGateway } from './payments/gateway';
 import { createPaymentService } from './payments/payment-service';
 import { createKnexPaymentsRepo, type PaymentMethod } from './payments/repo';
@@ -130,6 +133,7 @@ function main(): void {
     throw new Error(`PAYMENT_PROVIDER '${env.PAYMENT_PROVIDER}' is not implemented yet (Phase 8)`);
   };
   const { gateway, method: paymentMethod } = buildGateway();
+  const ledgerService = createLedgerService();
   const payments = {
     paymentService: createPaymentService({
       readRepo: createKnexPaymentsRepo(db),
@@ -137,7 +141,17 @@ function main(): void {
       gateway,
       method: paymentMethod,
     }),
+    captureService: createCaptureService({
+      readRepo: createKnexPaymentsRepo(db),
+      withTransaction: (work) =>
+        db.transaction((trx) =>
+          work({ payments: createKnexPaymentsRepo(trx), ledger: createKnexLedgerRepo(trx) }),
+        ),
+      ledgerService,
+    }),
     requireAuth: auth.requireAuth,
+    webhookToken: env.MPESA_WEBHOOK_TOKEN,
+    allowDevSimulate: env.NODE_ENV !== 'production',
   };
 
   const app = createApp({

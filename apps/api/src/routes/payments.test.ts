@@ -4,8 +4,11 @@ import { describe, expect, it } from 'vitest';
 import { signAccessToken } from '../auth/tokens';
 import { createApp } from '../app';
 import { createRequireAuth } from '../middleware/auth';
+import type { CaptureService } from '../payments/capture-service';
 import type { PaymentService, PaymentView } from '../payments/payment-service';
 import { createLogger } from '../platform/logger';
+
+const WEBHOOK_TOKEN = 'test-webhook-token';
 
 const { privateKey, publicKey } = generateKeyPairSync('rsa', {
   modulusLength: 2048,
@@ -37,13 +40,21 @@ const paymentService: PaymentService = {
   getPayment: () => Promise.resolve(view),
 };
 
+const captureService: CaptureService = {
+  processStkResult: () => Promise.resolve('captured'),
+  simulate: () => Promise.resolve('captured'),
+};
+
 function app() {
   return createApp({
     logger: createLogger({ level: 'silent' }),
     version: 'test',
     payments: {
       paymentService,
+      captureService,
       requireAuth: createRequireAuth({ publicKey, issuer: ISSUER, audience: AUDIENCE }),
+      webhookToken: WEBHOOK_TOKEN,
+      allowDevSimulate: true,
     },
   });
 }
@@ -80,5 +91,60 @@ describe('payments (auth required)', () => {
     const res = await request(app()).get('/api/v1/payments/PAY1').set(auth());
     expect(res.status).toBe(200);
     expect(res.body.ulid).toBe('PAY1');
+  });
+});
+
+const callbackBody = {
+  checkoutRequestId: 'SIM-1',
+  resultCode: 0,
+  resultDesc: 'ok',
+  amountCents: 40_200,
+  mpesaReceipt: 'RCPT1',
+};
+
+describe('STK webhook', () => {
+  it('rejects a missing/invalid token with 403', async () => {
+    expect(
+      (await request(app()).post('/api/v1/webhooks/mpesa/stk').send(callbackBody)).status,
+    ).toBe(403);
+    const wrong = await request(app())
+      .post('/api/v1/webhooks/mpesa/stk')
+      .set('X-Webhook-Token', 'nope')
+      .send(callbackBody);
+    expect(wrong.status).toBe(403);
+  });
+
+  it('acks 200 with the outcome for a valid token', async () => {
+    const res = await request(app())
+      .post('/api/v1/webhooks/mpesa/stk')
+      .set('X-Webhook-Token', WEBHOOK_TOKEN)
+      .send(callbackBody);
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('captured');
+  });
+
+  it('rejects a malformed callback body with 422', async () => {
+    const res = await request(app())
+      .post('/api/v1/webhooks/mpesa/stk')
+      .set('X-Webhook-Token', WEBHOOK_TOKEN)
+      .send({ resultDesc: 'no checkout id' });
+    expect(res.status).toBe(422);
+  });
+});
+
+describe('dev simulate (admin only)', () => {
+  it('forbids a non-admin (403) and allows an admin (200)', async () => {
+    const forbiddenRes = await request(app())
+      .post('/api/v1/dev/payments/PAY1/simulate')
+      .set(auth())
+      .send({ outcome: 'success' });
+    expect(forbiddenRes.status).toBe(403);
+
+    const ok = await request(app())
+      .post('/api/v1/dev/payments/PAY1/simulate')
+      .set('Authorization', `Bearer ${tokenFor(['admin'])}`)
+      .send({ outcome: 'success' });
+    expect(ok.status).toBe(200);
+    expect(ok.body.status).toBe('captured');
   });
 });

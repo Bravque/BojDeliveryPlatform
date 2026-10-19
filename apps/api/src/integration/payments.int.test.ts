@@ -5,7 +5,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { newUlid } from '../auth/crypto';
 import { signAccessToken } from '../auth/tokens';
 import { createApp } from '../app';
+import { createLedgerService } from '../ledger/ledger-service';
+import { createKnexLedgerRepo } from '../ledger/repo';
 import { createRequireAuth } from '../middleware/auth';
+import { createCaptureService } from '../payments/capture-service';
 import { createPaymentService } from '../payments/payment-service';
 import { createKnexPaymentsRepo } from '../payments/repo';
 import { SimulatedGateway } from '../payments/simulated-gateway';
@@ -41,7 +44,17 @@ describe.skipIf(!DATABASE_URL)('payments integration (real MySQL)', () => {
           gateway: new SimulatedGateway(),
           method: 'simulated',
         }),
+        captureService: createCaptureService({
+          readRepo: createKnexPaymentsRepo(db),
+          withTransaction: (work) =>
+            db.transaction((trx) =>
+              work({ payments: createKnexPaymentsRepo(trx), ledger: createKnexLedgerRepo(trx) }),
+            ),
+          ledgerService: createLedgerService(),
+        }),
         requireAuth: createRequireAuth({ publicKey, issuer: ISSUER, audience: AUDIENCE }),
+        webhookToken: 'int-webhook-token',
+        allowDevSimulate: true,
       },
     });
   });
