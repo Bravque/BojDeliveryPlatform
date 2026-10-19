@@ -59,9 +59,10 @@ For each task:
 > https://github.com/Bravque/BojDeliveryPlatform (public).
 
 **Current status (2026-10-19):** **Phase 4 — Payments (simulated) & ledger** in progress: Inc 1
-(double-entry ledger; **D4 = platform-funded promos**) merged (PR #19); Inc 2 (payment initiation +
-`PaymentGateway`/`SimulatedGateway`, `POST /orders/:ulid/pay` → `payment_pending`) implemented on
-`phase-4-payments` (open PR). **Phases 0–3 complete & merged.** `main` is protected.
+(ledger; **D4 platform-funded**) & Inc 2 (payment initiation + gateway) merged (PRs #19–#20); Inc 3
+(STK capture: callback dedupe → ledger capture → order `placed`; fail → release stock; amount
+mismatch quarantined) implemented on `phase-4-capture` (open PR). **Phases 0–3 complete & merged.**
+`main` is protected.
 
 ## How to resume (workflow + environment)
 - **Stack:** pnpm 9 + Turborepo monorepo. `apps/api` = Node/Express + Knex + MySQL;
@@ -86,7 +87,7 @@ For each task:
 - [x] **Phase 1 — Identity, roles & authorization** (PRs #2–#6; integration-test CI #7): phone-OTP + dashboard email/password (argon2id, lockout, no enumeration); RS256 access + rotating refresh with reuse detection; `requireAuth`, `/me`; RBAC policy (role + ownership + separation of duties); append-only audit log.
 - [x] **Phase 2 — Catalogue, inventory & merchants** *(complete)*: ✅ Inc1 merchants + admin onboarding (PR #8). ✅ Inc2 catalogue CRUD + merchant profile + optimistic price lock (PR #9). ✅ Inc3 options & availability (min/max-select) (PR #11). ✅ Inc4 inventory + reserve/release (concurrency) (PR #12). ✅ Inc5 public browse (approved/open only; town-level filtering) (PR #13).
 - [x] **Phase 3 — Cart, pricing & order creation (no payment)** *(complete)*: ✅ Inc1 delivery zones (**circle model**, D13) + customer addresses + zone resolution (PR #14). ✅ Inc2 delivery-fee rules (time-boxed, per-zone) + haversine fee calc (PR #15). ✅ Inc3 cart (single-merchant guard + server-side option validation, references only) (PR #16). ✅ Inc4 `POST /cart/quote` authoritative breakdown + promotions (percentage/fixed/free_delivery, caps/eligibility/limits, out-of-zone 422, never-negative) (PR #17). ✅ Inc5 `POST /orders` (atomic recompute → stock reservation → price/commission snapshot → promotion_redemption) + order state-machine framework + `draft → cancelled`; N-on-1-stock concurrency proven (open PR `phase-3-orders`).
-- [ ] **Phase 4 — Payments (simulated) & ledger** *(in progress)*: ✅ Inc1 double-entry ledger foundation (`ledger_account/transaction/entry`, chart of accounts, balanced+idempotent `LedgerService.post`; **D4 platform-funded**) (PR #19). ✅ Inc2 payment initiation + `PaymentGateway`/`SimulatedGateway` (`payment`/`payment_event`, `POST /orders/:ulid/pay` Idempotency-Key → `draft→payment_pending`, `GET /payments/:ulid`) (open PR `phase-4-payments`). ⬜ Inc3 capture (callback dedupe) + ledger capture + order→placed. ⬜ Inc4 timeouts + reconciliation + auto-refund edge. ⬜ Inc5 refunds (lifecycle + ledger reversal + idempotency).
+- [ ] **Phase 4 — Payments (simulated) & ledger** *(in progress)*: ✅ Inc1 double-entry ledger foundation (`ledger_account/transaction/entry`, chart of accounts, balanced+idempotent `LedgerService.post`; **D4 platform-funded**) (PR #19). ✅ Inc2 payment initiation + `PaymentGateway`/`SimulatedGateway` (`payment`/`payment_event`, `POST /orders/:ulid/pay` Idempotency-Key → `draft→payment_pending`, `GET /payments/:ulid`) (PR #20). ✅ Inc3 STK capture: `POST /webhooks/mpesa/stk` (token) + admin dev-simulate; `payment_event` dedupe; verified success+amount → ledger capture (D4) + order `placed`+paid; fail → `payment_failed` + release stock; amount-mismatch quarantined; replay 100×→one capture (open PR `phase-4-capture`). ⬜ Inc4 timeouts + reconciliation + auto-refund edge. ⬜ Inc5 refunds (lifecycle + ledger reversal + idempotency).
 - [ ] **Phase 5 — Rider onboarding, assignment & delivery**: onboarding/approval, online/offline, candidate selection, time-boxed offers, atomic accept, pickup/deliver with **PIN proof** (D7), earnings accrual.
 - [ ] **Phase 6 — Realtime, notifications & client apps (MVP)**: Socket.IO (order/offers/merchant) with room auth, push + SMS, customer/rider/merchant/admin MVP flows.
 - [ ] **Phase 7 — Settlements, payouts & admin/reporting**: settlement gen/approval, payout batches (simulated B2C), reconciliation UI, reports, disputes/overrides (audited).

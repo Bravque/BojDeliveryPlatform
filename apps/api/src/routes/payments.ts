@@ -1,13 +1,20 @@
 import express, { type Request, type RequestHandler, type Router } from 'express';
 import { z } from 'zod';
-import { badRequest } from '../http/errors';
+import { badRequest, forbidden } from '../http/errors';
 import { asyncHandler } from '../middleware/error';
+import type { CaptureService } from '../payments/capture-service';
+import { requireRole } from '../middleware/rbac';
 import type { Actor, PaymentService } from '../payments/payment-service';
 
 /** Payment dependencies for the app factory. */
 export interface PaymentsModule {
   paymentService: PaymentService;
+  captureService: CaptureService;
   requireAuth: RequestHandler;
+  /** Shared secret the STK callback must present; when undefined the webhook rejects all. */
+  webhookToken: string | undefined;
+  /** Whether to mount the non-production dev simulate endpoint (NODE_ENV !== 'production'). */
+  allowDevSimulate: boolean;
 }
 
 const payBodySchema = z.object({
@@ -65,6 +72,70 @@ export function paymentsRouter(
     requireAuth,
     asyncHandler(async (req, res) => {
       res.status(200).json(await paymentService.getPayment(actorOf(req), req.params.ulid!));
+    }),
+  );
+
+  return router;
+}
+
+const callbackSchema = z.object({
+  checkoutRequestId: z.string().min(1),
+  merchantRequestId: z.string().nullish(),
+  resultCode: z.number().int(),
+  resultDesc: z.string().default(''),
+  amountCents: z.number().int().nullish(),
+  mpesaReceipt: z.string().nullish(),
+});
+
+/**
+ * STK callback webhook (doc 07 §3) — no user auth; authenticated by a shared `X-Webhook-Token`.
+ * Always acks 200 for a recognised request (duplicate / unknown / mismatch included) so the
+ * provider does not retry forever; capture decisions live in the service.
+ */
+export function stkWebhookRouter(
+  captureService: CaptureService,
+  webhookToken: string | undefined,
+): Router {
+  const router = express.Router();
+
+  router.post(
+    '/webhooks/mpesa/stk',
+    asyncHandler(async (req, res) => {
+      if (!webhookToken || req.get('X-Webhook-Token') !== webhookToken) {
+        throw forbidden('Invalid webhook token');
+      }
+      const callback = callbackSchema.parse(req.body);
+      const outcome = await captureService.processStkResult(callback);
+      res.status(200).json({ status: outcome });
+    }),
+  );
+
+  return router;
+}
+
+const simulateSchema = z.object({
+  outcome: z.enum(['success', 'fail']),
+  amountCents: z.number().int().positive().optional(),
+});
+
+/**
+ * Non-production helper to drive the simulated gateway's outcome for a payment (admin only). Mount
+ * only when `NODE_ENV !== 'production'`.
+ */
+export function devPaymentsRouter(
+  captureService: CaptureService,
+  requireAuth: RequestHandler,
+): Router {
+  const router = express.Router();
+
+  router.post(
+    '/dev/payments/:ulid/simulate',
+    requireAuth,
+    requireRole('admin'),
+    asyncHandler(async (req, res) => {
+      const { outcome, amountCents } = simulateSchema.parse(req.body);
+      const result = await captureService.simulate(req.params.ulid!, outcome, amountCents);
+      res.status(200).json({ status: result });
     }),
   );
 

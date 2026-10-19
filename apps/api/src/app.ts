@@ -13,7 +13,12 @@ import { addressesRouter, adminZonesRouter, type GeoModule } from './routes/geo'
 import { healthRouter, type HealthDeps } from './routes/health';
 import { merchantRouter } from './routes/merchant';
 import { ordersRouter, type OrdersModule } from './routes/orders';
-import { paymentsRouter, type PaymentsModule } from './routes/payments';
+import {
+  devPaymentsRouter,
+  paymentsRouter,
+  stkWebhookRouter,
+  type PaymentsModule,
+} from './routes/payments';
 import { adminPromotionsRouter, type PromotionsModule } from './routes/promotions';
 import { quoteRouter, type PricingModule } from './routes/quote';
 
@@ -111,6 +116,10 @@ export function createApp(deps: AppDeps): Express {
     }
     if (deps.payments) {
       apiV1.use(paymentsRouter(deps.payments.paymentService, deps.payments.requireAuth));
+      apiV1.use(stkWebhookRouter(deps.payments.captureService, deps.payments.webhookToken));
+      if (deps.payments.allowDevSimulate) {
+        apiV1.use(devPaymentsRouter(deps.payments.captureService, deps.payments.requireAuth));
+      }
     }
     app.use('/api/v1', apiV1);
   }
