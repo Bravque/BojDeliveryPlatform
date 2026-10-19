@@ -10,6 +10,7 @@ import { createApp } from '../app';
 import { createFeeService } from '../fees/fee-service';
 import { createKnexDeliveryFeeRuleRepo } from '../fees/repo';
 import { createRequireAuth } from '../middleware/auth';
+import { createFulfillmentService } from '../orders/fulfillment-service';
 import { createOrderService } from '../orders/order-service';
 import { createKnexOrdersRepo } from '../orders/repo';
 import { buildKnexConfig, createDb } from '../platform/db';
@@ -48,6 +49,9 @@ describe.skipIf(!DATABASE_URL)('orders integration (real MySQL)', () => {
           withTransaction: (work) => db.transaction((trx) => work(createKnexOrdersRepo(trx))),
           zones: createZoneService({ repo: createKnexZoneRepo(db), auditService }),
           fees: createFeeService({ repo: createKnexDeliveryFeeRuleRepo(db), auditService }),
+        }),
+        fulfillmentService: createFulfillmentService({
+          withTransaction: (work) => db.transaction((trx) => work(createKnexOrdersRepo(trx))),
         }),
         requireAuth: createRequireAuth({ publicKey, issuer: ISSUER, audience: AUDIENCE }),
       },

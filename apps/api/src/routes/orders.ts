@@ -1,11 +1,14 @@
 import express, { type Request, type RequestHandler, type Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../middleware/error';
+import type { FulfillmentService } from '../orders/fulfillment-service';
 import type { Actor, OrderService } from '../orders/order-service';
 
 /** Customer order dependencies for the app factory. */
 export interface OrdersModule {
   orderService: OrderService;
+  /** Merchant-driven progression (accept/preparing/ready/reject). */
+  fulfillmentService: FulfillmentService;
   requireAuth: RequestHandler;
 }
 

@@ -12,6 +12,7 @@ import { adminFeeRulesRouter, type FeesModule } from './routes/fees';
 import { addressesRouter, adminZonesRouter, type GeoModule } from './routes/geo';
 import { healthRouter, type HealthDeps } from './routes/health';
 import { merchantRouter } from './routes/merchant';
+import { merchantOrdersRouter } from './routes/merchant-orders';
 import { ordersRouter, type OrdersModule } from './routes/orders';
 import {
   adminReconcileRouter,
@@ -120,6 +121,7 @@ export function createApp(deps: AppDeps): Express {
     }
     if (deps.orders) {
       apiV1.use(ordersRouter(deps.orders.orderService, deps.orders.requireAuth));
+      apiV1.use(merchantOrdersRouter(deps.orders.fulfillmentService, deps.orders.requireAuth));
     }
     if (deps.payments) {
       apiV1.use(paymentsRouter(deps.payments.paymentService, deps.payments.requireAuth));
