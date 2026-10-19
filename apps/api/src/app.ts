@@ -16,7 +16,9 @@ import { ordersRouter, type OrdersModule } from './routes/orders';
 import {
   adminReconcileRouter,
   devPaymentsRouter,
+  devRefundsRouter,
   paymentsRouter,
+  refundsRouter,
   stkWebhookRouter,
   type PaymentsModule,
 } from './routes/payments';
@@ -119,8 +121,10 @@ export function createApp(deps: AppDeps): Express {
       apiV1.use(paymentsRouter(deps.payments.paymentService, deps.payments.requireAuth));
       apiV1.use(stkWebhookRouter(deps.payments.captureService, deps.payments.webhookToken));
       apiV1.use(adminReconcileRouter(deps.payments.reconcileService, deps.payments.requireAuth));
+      apiV1.use(refundsRouter(deps.payments.refundService, deps.payments.requireAuth));
       if (deps.payments.allowDevSimulate) {
         apiV1.use(devPaymentsRouter(deps.payments.captureService, deps.payments.requireAuth));
+        apiV1.use(devRefundsRouter(deps.payments.refundService, deps.payments.requireAuth));
       }
     }
     app.use('/api/v1', apiV1);

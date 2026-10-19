@@ -4,6 +4,7 @@ import type { LedgerRepo } from '../ledger/repo';
 import type { LedgerService } from '../ledger/ledger-service';
 import { assertTransition } from '../orders/state-machine';
 import { buildCaptureLines, type CaptureOutcome, type StkCallback } from './capture';
+import { buildAutoRefundLines } from './refund';
 import type { PaymentsRepo } from './repo';
 
 /** The transaction-bound repos a capture needs: payment/order writes + the ledger. */
@@ -47,6 +48,40 @@ export function createCaptureService(deps: CaptureServiceDeps) {
         return 'unknown_payment';
       }
       if (payment.status !== 'pending' && payment.status !== 'initiated') {
+        // Late success for a payment we already failed locally (timeout / cancel): the funds were
+        // actually collected, so raise an idempotent auto-refund (doc 07 §5, §8). Earnings were
+        // never posted (order cancelled), so the inflow goes straight into `refunds_payable`.
+        if (
+          callback.resultCode === 0 &&
+          (callback.amountCents ?? null) === payment.amountCents &&
+          (payment.status === 'failed' || payment.status === 'timed_out')
+        ) {
+          const autoKey = `auto_refund:${payment.id}`;
+          if (await payments.findRefundByIdempotencyKey(autoKey)) {
+            return 'auto_refunded';
+          }
+          const refundId = await payments.insertRefund({
+            ulid: newUlid(),
+            orderId: payment.orderId,
+            paymentId: payment.id,
+            amountCents: payment.amountCents,
+            reason: 'Late success after local failure/cancel — auto-refund',
+            source: 'auto',
+            requestedBy: null,
+            status: 'completed',
+            idempotencyKey: autoKey,
+          });
+          await ledgerService.post(ledger, {
+            kind: 'order_refund',
+            refType: 'refund',
+            refId: refundId,
+            idempotencyKey: `order_refund:${refundId}`,
+            lines: buildAutoRefundLines(payment.amountCents),
+          });
+          await payments.markPaymentReversed(payment.id, callback.mpesaReceipt ?? null);
+          await payments.setOrderPaymentStatus(payment.orderId, 'refunded');
+          return 'auto_refunded';
+        }
         return 'already_final';
       }
 

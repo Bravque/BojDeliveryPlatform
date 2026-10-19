@@ -1,5 +1,6 @@
 import type { Knex } from 'knex';
 import type { OrderMoneySnapshot } from './capture';
+import type { RefundRecord, RefundSource, RefundStatus } from './refund';
 import type { ActorType, OrderStatus } from '../orders/state-machine';
 
 /**
@@ -11,6 +12,29 @@ import type { ActorType, OrderStatus } from '../orders/state-machine';
 export type PaymentStatus =
   'initiated' | 'pending' | 'succeeded' | 'failed' | 'timed_out' | 'reversed';
 export type PaymentMethod = 'mpesa_stk' | 'cash' | 'simulated';
+export type OrderPaymentStatus =
+  'unpaid' | 'pending' | 'paid' | 'failed' | 'refunded' | 'partially_refunded';
+
+/** The order fields a refund request needs (money total + current payment status + owner). */
+export interface OrderForRefund {
+  id: number;
+  status: OrderStatus;
+  paymentStatus: OrderPaymentStatus;
+  totalCents: number;
+  customerId: number;
+}
+
+export interface InsertRefundInput {
+  ulid: string;
+  orderId: number;
+  paymentId: number;
+  amountCents: number;
+  reason: string;
+  source: RefundSource;
+  requestedBy: number | null;
+  status: RefundStatus;
+  idempotencyKey: string;
+}
 
 export interface OrderForPayment {
   id: number;
@@ -85,7 +109,7 @@ export interface PaymentsRepo {
   setOrderStatusAndPayment(
     orderId: number,
     status: OrderStatus,
-    paymentStatus: 'paid' | 'failed',
+    paymentStatus: OrderPaymentStatus,
   ): Promise<void>;
   listOrderStockLines(orderId: number): Promise<Array<{ productId: number; quantity: number }>>;
   releaseStock(productId: number, quantity: number): Promise<void>;
@@ -93,6 +117,24 @@ export interface PaymentsRepo {
   // --- reconciliation (increment 4) ---
   /** Non-terminal payments (pending/initiated); with `olderThan`, only those initiated before it. */
   listOpenPayments(olderThan?: Date): Promise<PaymentRecord[]>;
+
+  // --- refunds (increment 5) ---
+  findOrderForRefund(orderUlid: string): Promise<OrderForRefund | null>;
+  findSucceededPaymentByOrderId(orderId: number): Promise<PaymentRecord | null>;
+  /** Total of already-completed refunds for an order (the amount already returned). */
+  sumCompletedRefunds(orderId: number): Promise<number>;
+  insertRefund(input: InsertRefundInput): Promise<number>;
+  findRefundByUlid(ulid: string): Promise<RefundRecord | null>;
+  findRefundByIdempotencyKey(key: string): Promise<RefundRecord | null>;
+  /** Load a refund inside a transaction, locking the row (FOR UPDATE). */
+  lockRefundByUlid(ulid: string): Promise<RefundRecord | null>;
+  markRefundProcessing(refundId: number, approvedBy: number, providerRef: string): Promise<void>;
+  markRefundRejected(refundId: number, approvedBy: number): Promise<void>;
+  markRefundCompleted(refundId: number): Promise<void>;
+  markRefundFailed(refundId: number): Promise<void>;
+  setOrderPaymentStatus(orderId: number, paymentStatus: OrderPaymentStatus): Promise<void>;
+  markPaymentReversed(paymentId: number, mpesaReceipt: string | null): Promise<void>;
+  findUserUlidById(userId: number): Promise<string | null>;
 }
 
 interface PaymentRowDb {
@@ -121,6 +163,38 @@ function mapPayment(row: PaymentRowDb): PaymentRecord {
     checkoutRequestId: row.checkout_request_id,
     merchantRequestId: row.merchant_request_id,
     mpesaReceipt: row.mpesa_receipt,
+    idempotencyKey: row.idempotency_key,
+  };
+}
+
+interface RefundRowDb {
+  id: number | string;
+  ulid: string;
+  order_id: number | string;
+  payment_id: number | string;
+  amount_cents: number | string;
+  reason: string;
+  status: RefundStatus;
+  source: RefundSource;
+  requested_by: number | string | null;
+  approved_by: number | string | null;
+  provider_ref: string | null;
+  idempotency_key: string;
+}
+
+function mapRefund(row: RefundRowDb): RefundRecord {
+  return {
+    id: Number(row.id),
+    ulid: row.ulid,
+    orderId: Number(row.order_id),
+    paymentId: Number(row.payment_id),
+    amountCents: Number(row.amount_cents),
+    reason: row.reason,
+    status: row.status,
+    source: row.source,
+    requestedBy: row.requested_by === null ? null : Number(row.requested_by),
+    approvedBy: row.approved_by === null ? null : Number(row.approved_by),
+    providerRef: row.provider_ref,
     idempotencyKey: row.idempotency_key,
   };
 }
@@ -337,6 +411,130 @@ export function createKnexPaymentsRepo(exec: Knex): PaymentsRepo {
       }
       const rows = (await query) as PaymentRowDb[];
       return rows.map(mapPayment);
+    },
+
+    async findOrderForRefund(orderUlid) {
+      const row = (await exec('order')
+        .where({ ulid: orderUlid })
+        .first('id', 'status', 'payment_status', 'total_cents', 'customer_id')) as
+        | {
+            id: number | string;
+            status: OrderStatus;
+            payment_status: OrderPaymentStatus;
+            total_cents: number | string;
+            customer_id: number | string;
+          }
+        | undefined;
+      if (!row) {
+        return null;
+      }
+      return {
+        id: Number(row.id),
+        status: row.status,
+        paymentStatus: row.payment_status,
+        totalCents: Number(row.total_cents),
+        customerId: Number(row.customer_id),
+      };
+    },
+
+    async findSucceededPaymentByOrderId(orderId) {
+      const row = (await exec('payment')
+        .where({ order_id: orderId, status: 'succeeded' })
+        .orderBy('id', 'desc')
+        .first()) as PaymentRowDb | undefined;
+      return row ? mapPayment(row) : null;
+    },
+
+    async sumCompletedRefunds(orderId) {
+      const row = (await exec('refund')
+        .where({ order_id: orderId, status: 'completed' })
+        .sum({ total: 'amount_cents' })
+        .first()) as { total: number | string | null } | undefined;
+      return Number(row?.total ?? 0);
+    },
+
+    async insertRefund(input) {
+      const [id] = await exec('refund').insert({
+        ulid: input.ulid,
+        order_id: input.orderId,
+        payment_id: input.paymentId,
+        amount_cents: input.amountCents,
+        reason: input.reason,
+        source: input.source,
+        requested_by: input.requestedBy,
+        status: input.status,
+        idempotency_key: input.idempotencyKey,
+        completed_at: input.status === 'completed' ? exec.raw('CURRENT_TIMESTAMP(3)') : null,
+      });
+      return Number(id);
+    },
+
+    async findRefundByUlid(ulid) {
+      const row = (await exec('refund').where({ ulid }).first()) as RefundRowDb | undefined;
+      return row ? mapRefund(row) : null;
+    },
+
+    async findRefundByIdempotencyKey(key) {
+      const row = (await exec('refund').where({ idempotency_key: key }).first()) as
+        RefundRowDb | undefined;
+      return row ? mapRefund(row) : null;
+    },
+
+    async lockRefundByUlid(ulid) {
+      const row = (await exec('refund').where({ ulid }).forUpdate().first()) as
+        RefundRowDb | undefined;
+      return row ? mapRefund(row) : null;
+    },
+
+    async markRefundProcessing(refundId, approvedBy, providerRef) {
+      await exec('refund')
+        .where({ id: refundId })
+        .update({
+          status: 'processing',
+          approved_by: approvedBy,
+          provider_ref: providerRef,
+          approved_at: exec.raw('CURRENT_TIMESTAMP(3)'),
+        });
+    },
+
+    async markRefundRejected(refundId, approvedBy) {
+      await exec('refund')
+        .where({ id: refundId })
+        .update({
+          status: 'rejected',
+          approved_by: approvedBy,
+          approved_at: exec.raw('CURRENT_TIMESTAMP(3)'),
+        });
+    },
+
+    async markRefundCompleted(refundId) {
+      await exec('refund')
+        .where({ id: refundId })
+        .update({ status: 'completed', completed_at: exec.raw('CURRENT_TIMESTAMP(3)') });
+    },
+
+    async markRefundFailed(refundId) {
+      await exec('refund').where({ id: refundId }).update({ status: 'failed' });
+    },
+
+    async setOrderPaymentStatus(orderId, paymentStatus) {
+      await exec('order').where({ id: orderId }).update({ payment_status: paymentStatus });
+    },
+
+    async markPaymentReversed(paymentId, mpesaReceipt) {
+      await exec('payment')
+        .where({ id: paymentId })
+        .update({
+          status: 'reversed',
+          mpesa_receipt: mpesaReceipt,
+          settled_at: exec.raw('CURRENT_TIMESTAMP(3)'),
+        });
+    },
+
+    async findUserUlidById(userId) {
+      const row = (await exec('user').where({ id: userId }).first('ulid')) as
+        { ulid: string } | undefined;
+      return row ? row.ulid : null;
     },
   };
 }

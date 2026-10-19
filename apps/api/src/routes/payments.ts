@@ -6,12 +6,14 @@ import type { CaptureService } from '../payments/capture-service';
 import { requirePolicy, requireRole } from '../middleware/rbac';
 import type { Actor, PaymentService } from '../payments/payment-service';
 import type { ReconcileService } from '../payments/reconcile-service';
+import type { RefundService } from '../payments/refund-service';
 
 /** Payment dependencies for the app factory. */
 export interface PaymentsModule {
   paymentService: PaymentService;
   captureService: CaptureService;
   reconcileService: ReconcileService;
+  refundService: RefundService;
   requireAuth: RequestHandler;
   /** Shared secret the STK callback must present; when undefined the webhook rejects all. */
   webhookToken: string | undefined;
@@ -175,6 +177,90 @@ export function adminReconcileRouter(
     requirePolicy('audit:read'),
     asyncHandler(async (_req, res) => {
       res.status(200).json(await reconcileService.reconciliationReport());
+    }),
+  );
+
+  return router;
+}
+
+const requestRefundSchema = z.object({
+  amountCents: z.number().int().positive(),
+  reason: z.string().min(1).max(255),
+});
+
+/**
+ * Refund endpoints (doc 07 §8). Requesting and approving are split so separation of duties can be
+ * enforced (requester ≠ approver). Request is ops/admin/finance; approve/reject require the
+ * `refund:approve` policy (admin/finance); the report read is `audit:read`.
+ */
+export function refundsRouter(refundService: RefundService, requireAuth: RequestHandler): Router {
+  const router = express.Router();
+
+  router.post(
+    '/orders/:ulid/refunds',
+    requireAuth,
+    requireRole('admin', 'ops', 'finance'),
+    asyncHandler(async (req, res) => {
+      const idempotencyKey = idempotencyKeyOf(req);
+      const { amountCents, reason } = requestRefundSchema.parse(req.body ?? {});
+      const refund = await refundService.requestRefund(actorOf(req), req.params.ulid!, {
+        amountCents,
+        reason,
+        idempotencyKey,
+      });
+      res.status(201).json(refund);
+    }),
+  );
+
+  router.post(
+    '/refunds/:ulid/approve',
+    requireAuth,
+    requirePolicy('refund:approve'),
+    asyncHandler(async (req, res) => {
+      res.status(200).json(await refundService.approveRefund(actorOf(req), req.params.ulid!));
+    }),
+  );
+
+  router.post(
+    '/refunds/:ulid/reject',
+    requireAuth,
+    requirePolicy('refund:approve'),
+    asyncHandler(async (req, res) => {
+      res.status(200).json(await refundService.rejectRefund(actorOf(req), req.params.ulid!));
+    }),
+  );
+
+  router.get(
+    '/refunds/:ulid',
+    requireAuth,
+    requirePolicy('audit:read'),
+    asyncHandler(async (req, res) => {
+      res.status(200).json(await refundService.getRefund(req.params.ulid!));
+    }),
+  );
+
+  return router;
+}
+
+const refundSimulateSchema = z.object({ outcome: z.enum(['success', 'fail']) });
+
+/**
+ * Non-production helper to confirm the simulated reversal outcome for a refund (admin only). Mount
+ * only when `NODE_ENV !== 'production'`.
+ */
+export function devRefundsRouter(
+  refundService: RefundService,
+  requireAuth: RequestHandler,
+): Router {
+  const router = express.Router();
+
+  router.post(
+    '/dev/refunds/:ulid/simulate',
+    requireAuth,
+    requireRole('admin'),
+    asyncHandler(async (req, res) => {
+      const { outcome } = refundSimulateSchema.parse(req.body);
+      res.status(200).json({ status: await refundService.simulate(req.params.ulid!, outcome) });
     }),
   );
 

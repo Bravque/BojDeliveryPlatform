@@ -38,6 +38,7 @@ function gatewayReturning(status: StkStatus, amountCents: number | null = null):
         amountCents,
         mpesaReceipt: status === 'success' ? 'RCPT1' : null,
       }),
+    initiateReversal: () => Promise.reject(new Error('unused')),
   };
 }
 

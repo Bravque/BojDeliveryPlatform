@@ -5,6 +5,37 @@ documents (`../01`…`../12`) are updated to match and point back here.
 
 ---
 
+## 2026-10-19 — Phase 4: refund cost-bearer + reversal ledger split (D14)
+
+| ID | Decision | Accepted value | Notes / guardrails |
+|----|----------|----------------|--------------------|
+| **D14** | Who bears a refund in the ledger | A **full** refund (whole order total, no prior partials) reverses the capture exactly. A **partial** refund is **merchant-borne**: clawed back from `merchant_payable:{m}` into `refunds_payable`. | Matches doc 07 §10 (settlement net = gross − commission − refunds). The refund liability lands in `refunds_payable`; the cash outflow is settled at payout (Phase 7). Merchant-funded partials keep the primitive simple and avoid proportional cent-rounding; a future per-refund split policy can be added without changing call sites. |
+
+**Refund reversal ledger split** (posted on completion; `kind = order_refund`, idempotent via `order_refund:{refundId}`):
+```
+# FULL refund (mirror of the capture, swapping mpesa_clearing → refunds_payable)
+DR merchant_payable:{m}        subtotal − commission
+DR commission_revenue          commission
+DR platform_delivery_income    delivery_fee
+DR platform_service_income     service_fee
+  CR refunds_payable             total
+  CR promo_expense               discount                 // platform recovers the promo (D4)
+
+# PARTIAL refund (amount a < total) — merchant-borne (D14)
+DR merchant_payable:{m}        a
+  CR refunds_payable             a
+
+# AUTO refund of an uncaptured-but-collected payment (late success after cancel)
+DR mpesa_clearing              a
+  CR refunds_payable             a
+```
+Lifecycle `requested → approved → processing → completed` (+ `rejected`/`failed`); separation of
+duties (requester ≠ approver) on manual refunds; `refund.idempotency_key` UNIQUE + the ledger
+idempotency key make a duplicate approve/execute a no-op. Shipped: `refund` table (`0015_refunds`)
++ `RefundService` + auto-refund hook in Phase 4 Inc 5.
+
+---
+
 ## 2026-10-19 — Phase 4: promotion funding (D4) + capture ledger split
 
 | ID | Decision | Accepted value | Notes / guardrails |

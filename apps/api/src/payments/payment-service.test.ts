@@ -99,6 +99,37 @@ class FakePaymentsRepo implements PaymentsRepo {
   async listOpenPayments() {
     return [];
   }
+  // Refund-path methods are unused by the payment (initiation) service tests.
+  async findOrderForRefund() {
+    return null;
+  }
+  async findSucceededPaymentByOrderId() {
+    return null;
+  }
+  async sumCompletedRefunds() {
+    return 0;
+  }
+  async insertRefund() {
+    return 1;
+  }
+  async findRefundByUlid() {
+    return null;
+  }
+  async findRefundByIdempotencyKey() {
+    return null;
+  }
+  async lockRefundByUlid() {
+    return null;
+  }
+  async markRefundProcessing() {}
+  async markRefundRejected() {}
+  async markRefundCompleted() {}
+  async markRefundFailed() {}
+  async setOrderPaymentStatus() {}
+  async markPaymentReversed() {}
+  async findUserUlidById() {
+    return null;
+  }
 }
 
 let pushes = 0;
@@ -115,6 +146,7 @@ const gateway: PaymentGateway = {
       amountCents: null,
       mpesaReceipt: null,
     }),
+  initiateReversal: () => Promise.resolve({ reversalId: 'SIMREV-1' }),
 };
 
 const CUST: Actor = { ulid: 'cust', roles: ['customer'] };
