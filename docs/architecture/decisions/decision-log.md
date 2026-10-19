@@ -5,6 +5,20 @@ documents (`../01`…`../12`) are updated to match and point back here.
 
 ---
 
+## 2026-10-19 — Phase 3: delivery zones modelled as circles (not GEOMETRY polygons)
+
+| ID | Decision | Accepted value | Notes / guardrails |
+|----|----------|----------------|--------------------|
+| **D13** | Zone serviceable-area model (refines **D1**) | A zone is a **circle**: `center_lat` + `center_lng` + `radius_m`. An address is serviceable when it lies within an **active** zone's radius (haversine distance). When zones overlap a point, the **nearest centre** wins (a deterministic, total resolution function). | Chosen for the single compact Migori CBD launch (D1): simpler than a polygon, **unit-testable without MySQL spatial** (no local DB on the dev box), and boundaries stay **config-driven** (centre/radius are admin-set DB records, nothing hardcoded). The circle columns are nullable while a zone is being configured and are **required by the service before a zone can be activated or used to resolve** an address. Distance uses **haversine** (straight-line) for now — consistent with D11 (Google Maps route distance arrives later behind the provider interface). **Future enhancement:** a GEOMETRY polygon + point-in-polygon model when precise or multi-zone boundaries are needed; `zone` can migrate to add a boundary column without changing the resolution call sites. |
+
+### Consequences for existing documents
+
+- `03-data-model.md` §3.2/§3.3: `zone` replaces the illustrative `boundary GEOMETRY ... SPATIAL
+  INDEX` with `center_lat`/`center_lng`/`radius_m`; `town`, `zone` and `address` gain a public
+  `ulid`. Shipped in migration `0008_zones_and_addresses` (Phase 3 Inc 1).
+
+---
+
 ## 2026-10-17 — Architecture review: approved to proceed to Phase 0 (with conditions)
 
 The architecture plan (`docs/architecture/00`–`12`) was **approved in principle**. Phase 0

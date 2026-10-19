@@ -124,20 +124,27 @@ CREATE TABLE refresh_token (
 ```sql
 CREATE TABLE town (
   id       BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  ulid     CHAR(26) NOT NULL UNIQUE,       -- public identifier
   name     VARCHAR(120) NOT NULL,
   timezone VARCHAR(60) NOT NULL DEFAULT 'Africa/Nairobi',
   is_active TINYINT(1) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB;
 
+-- A zone is a CIRCLE serviceable area (centre + radius), not a GEOMETRY polygon. Decided for the
+-- single compact Migori CBD launch (D1 / ADR referenced in decision-log): simpler, unit-testable
+-- without MySQL spatial, boundaries still config-driven. `center_*`/`radius_m` are nullable while a
+-- zone is being configured and are required (by the service) before it can be activated / resolved.
+-- A GEOMETRY polygon model remains a documented future enhancement for precise multi-zone boundaries.
 CREATE TABLE zone (
-  id        BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
-  town_id   BIGINT UNSIGNED NOT NULL,
-  name      VARCHAR(120) NOT NULL,
-  -- polygon stored as GEOMETRY for point-in-polygon zone resolution
-  boundary  GEOMETRY NOT NULL SRID 4326,
-  is_active TINYINT(1) NOT NULL DEFAULT 1,
-  FOREIGN KEY (town_id) REFERENCES town(id),
-  SPATIAL INDEX (boundary)
+  id         BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  ulid       CHAR(26) NOT NULL UNIQUE,     -- public identifier
+  town_id    BIGINT UNSIGNED NOT NULL,
+  name       VARCHAR(120) NOT NULL,
+  center_lat DECIMAL(9,6) NULL,
+  center_lng DECIMAL(9,6) NULL,
+  radius_m   INT UNSIGNED NULL,            -- serviceable radius from the centre, metres
+  is_active  TINYINT(1) NOT NULL DEFAULT 1,
+  FOREIGN KEY (town_id) REFERENCES town(id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE merchant (
@@ -227,6 +234,7 @@ CREATE TABLE inventory (
 ```sql
 CREATE TABLE address (
   id         BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  ulid       CHAR(26) NOT NULL UNIQUE,        -- public identifier
   user_id    BIGINT UNSIGNED NOT NULL,
   label      VARCHAR(60) NULL,
   line1      VARCHAR(200) NOT NULL,

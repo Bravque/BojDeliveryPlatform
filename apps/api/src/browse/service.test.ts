@@ -14,7 +14,7 @@ import type {
 } from './repo';
 
 class FakeBrowseRepo implements BrowseRepo {
-  towns: TownItem[] = [{ name: 'Migori', timezone: 'Africa/Nairobi' }];
+  towns: TownItem[] = [{ ulid: 'T1', name: 'Migori', timezone: 'Africa/Nairobi' }];
   merchantList: MerchantListItem[] = [];
   readonly merchants = new Map<string, MerchantDetail>();
   readonly categories = new Map<number, BrowseCategory[]>();

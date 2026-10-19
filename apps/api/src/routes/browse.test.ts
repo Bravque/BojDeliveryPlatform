@@ -15,7 +15,7 @@ const merchant = {
 };
 
 const browseService: BrowseService = {
-  listTowns: () => Promise.resolve([{ name: 'Migori', timezone: 'Africa/Nairobi' }]),
+  listTowns: () => Promise.resolve([{ ulid: 'T1', name: 'Migori', timezone: 'Africa/Nairobi' }]),
   listMerchants: () => Promise.resolve([merchant]),
   getMerchant: (ulid) =>
     ulid === 'M1' ? Promise.resolve(merchant) : Promise.reject(notFound('Merchant not found')),

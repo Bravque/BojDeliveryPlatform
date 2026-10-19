@@ -69,7 +69,7 @@ describe.skipIf(!DATABASE_URL)('merchant onboarding integration (real MySQL)', (
       await db(table).truncate();
     }
     await db.raw('SET FOREIGN_KEY_CHECKS = 1');
-    await db('town').insert({ name: 'Migori', is_active: true });
+    await db('town').insert({ ulid: newUlid(), name: 'Migori', is_active: true });
   });
 
   function auth() {
