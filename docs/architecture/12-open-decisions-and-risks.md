@@ -13,7 +13,7 @@
 | D1 | **Launch town** and its initial delivery zones | Zones drive fees, assignment radius, maps config | — (needs you) | Phase 3 |
 | D2 | **Commission model** (flat % vs. per-category vs. per-merchant) and the rate(s) | Drives settlement math and merchant contracts | Flat % per merchant via `commission_bps`, set per merchant | Phase 4/7 |
 | D3 | **Delivery-fee formula** values (base, per-km, min, max, surge) | Customer-facing price + rider economics | base + per-km, clamped; surge=1.0 | Phase 3 |
-| D4 | **Who funds promotions & delivery discounts** (platform vs. merchant) | Determines ledger split on capture | Platform-funded promos | Phase 4 |
+| D4 | **Who funds promotions & delivery discounts** (platform vs. merchant) | Determines ledger split on capture | **Resolved (2026-10-19):** platform-funded promos (merchant paid on full subtotal; discount → `promo_expense`) | Phase 4 |
 | D5 | **Rider economics**: is rider fee = delivery fee, or a separate rate; who keeps margin | Rider payouts + unit economics | Separate rider-rate; platform keeps margin | Phase 5/7 |
 | D6 | **Payment timing**: payment-first (refund on reject) vs. accept-first (pay after) | Refund volume vs. unpaid-work risk | Payment-first + fast auto-refund | Phase 4 |
 | D7 | **Proof of delivery** method (PIN / photo / signature / none) | Dispute handling, fraud | **Resolved (D7):** customer delivery **PIN** (default), entered by rider; photo optional | Phase 5 |
@@ -76,7 +76,7 @@ D10, D11, D12) and the ORM choice are **resolved** — see `decisions/decision-l
 Still needing resolution (not blocking Phase 0; required before the noted phase):
 
 - **D2 / commission** — 5–12% is a hypothesis; validate with real Migori merchants (Phase 4/7).
-- **D4** — who funds promotions/delivery discounts (Phase 4).
+- ~~**D4** — who funds promotions/delivery discounts~~ **Resolved (2026-10-19): platform-funded** (Phase 4 Inc 1).
 - **D5** — rider margin ownership (Phase 5/7).
 - **D9** — cancellation & refund policy details (Phase 4).
 - **D13** — settlement cadence & payout rails (Phase 7).
