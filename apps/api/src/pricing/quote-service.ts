@@ -1,7 +1,8 @@
-import { addCents, CURRENCY } from '@boj/money';
+import { CURRENCY } from '@boj/money';
 import { notFound, unauthorized, unprocessable } from '../http/errors';
 import { distanceMeters } from '../fees/compute';
 import type { PromotionType } from '../promotions/promotion';
+import { priceLine, sumSubtotalCents, type PricedLine } from './compute';
 import type { PricingRepo, QuoteOption, QuoteProduct } from './repo';
 
 /** The acting principal (from req.principal). Quotes are scoped to this user's cart + addresses. */
@@ -15,15 +16,7 @@ export interface QuoteInput {
   promoCode?: string;
 }
 
-export interface QuoteLineItem {
-  productUlid: string;
-  name: string;
-  unitPriceCents: number;
-  quantity: number;
-  optionsCents: number;
-  lineTotalCents: number;
-  options: Array<{ ulid: string; name: string; priceDeltaCents: number }>;
-}
+export type QuoteLineItem = PricedLine;
 
 export interface QuoteBreakdown {
   merchant: { ulid: string; name: string };
@@ -112,36 +105,22 @@ export function createQuoteService(deps: QuoteServiceDeps) {
       ]),
     );
 
-    const lineItems: QuoteLineItem[] = items.map((item) => {
+    const lineItems: PricedLine[] = items.map((item) => {
       const product = products.get(item.productId);
-      if (!product || !product.isAvailable) {
+      if (!product) {
         throw unprocessable('ITEM_UNAVAILABLE', 'A product in the cart is no longer available');
       }
       const selected = item.optionUlids.map((ulid) => {
         const option = options.get(ulid);
-        if (!option || !option.isAvailable) {
+        if (!option) {
           throw unprocessable('ITEM_UNAVAILABLE', 'A selected option is no longer available');
         }
         return option;
       });
-      const optionsCents = addCents(...selected.map((o) => o.priceDeltaCents));
-      const lineTotalCents = (product.priceCents + optionsCents) * item.quantity;
-      return {
-        productUlid: product.ulid,
-        name: product.name,
-        unitPriceCents: product.priceCents,
-        quantity: item.quantity,
-        optionsCents,
-        lineTotalCents,
-        options: selected.map((o) => ({
-          ulid: o.ulid,
-          name: o.name,
-          priceDeltaCents: o.priceDeltaCents,
-        })),
-      };
+      return priceLine(product, item.quantity, selected);
     });
 
-    const subtotalCents = addCents(...lineItems.map((l) => l.lineTotalCents));
+    const subtotalCents = sumSubtotalCents(lineItems);
 
     // Serviceable zone (re-resolved from the point, authoritative) → delivery fee.
     const zone = await zones.resolveZone(address.lat, address.lng);
