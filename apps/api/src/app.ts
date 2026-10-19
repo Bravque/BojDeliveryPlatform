@@ -12,6 +12,7 @@ import { adminFeeRulesRouter, type FeesModule } from './routes/fees';
 import { addressesRouter, adminZonesRouter, type GeoModule } from './routes/geo';
 import { healthRouter, type HealthDeps } from './routes/health';
 import { merchantRouter } from './routes/merchant';
+import { ordersRouter, type OrdersModule } from './routes/orders';
 import { adminPromotionsRouter, type PromotionsModule } from './routes/promotions';
 import { quoteRouter, type PricingModule } from './routes/quote';
 
@@ -35,6 +36,8 @@ export interface AppDeps {
   promotions?: PromotionsModule;
   /** When provided, mounts the `/api/v1/cart/quote` endpoint. */
   pricing?: PricingModule;
+  /** When provided, mounts the `/api/v1/orders` endpoints. */
+  orders?: OrdersModule;
 }
 
 /** Build the Express application. Pure factory — no network/DB side effects. */
@@ -66,7 +69,8 @@ export function createApp(deps: AppDeps): Express {
     deps.fees ||
     deps.cart ||
     deps.promotions ||
-    deps.pricing
+    deps.pricing ||
+    deps.orders
   ) {
     const apiV1 = express.Router();
     if (deps.auth) {
@@ -97,6 +101,9 @@ export function createApp(deps: AppDeps): Express {
     }
     if (deps.pricing) {
       apiV1.use(quoteRouter(deps.pricing.quoteService, deps.pricing.requireAuth));
+    }
+    if (deps.orders) {
+      apiV1.use(ordersRouter(deps.orders.orderService, deps.orders.requireAuth));
     }
     app.use('/api/v1', apiV1);
   }
