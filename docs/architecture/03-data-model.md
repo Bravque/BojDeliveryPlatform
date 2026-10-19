@@ -248,16 +248,22 @@ CREATE TABLE address (
 
 CREATE TABLE delivery_fee_rule (
   id              BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  ulid            CHAR(26) NOT NULL UNIQUE,       -- public identifier
   zone_id         BIGINT UNSIGNED NOT NULL,
   base_fee_cents  BIGINT NOT NULL,
   per_km_cents    BIGINT NOT NULL DEFAULT 0,
   min_fee_cents   BIGINT NOT NULL,
-  max_fee_cents   BIGINT NULL,
+  max_fee_cents   BIGINT NULL,                    -- NULL = uncapped
   effective_from  DATETIME(3) NOT NULL,
-  effective_to    DATETIME(3) NULL,
+  effective_to    DATETIME(3) NULL,               -- NULL = open-ended
+  created_at      DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   FOREIGN KEY (zone_id) REFERENCES zone(id),
   INDEX (zone_id, effective_from)
 ) ENGINE=InnoDB;
+
+-- Fee = clamp(base_fee_cents + round(per_km_cents × distance_km), min_fee_cents, max_fee_cents).
+-- Distance is straight-line (haversine) at launch (D11). The rule in force at an instant is the
+-- latest effective_from whose window covers it. Shipped in migration 0009 (Phase 3 Inc 2).
 ```
 
 ### 3.4 Cart
