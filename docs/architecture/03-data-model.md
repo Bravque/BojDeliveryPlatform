@@ -553,19 +553,24 @@ CREATE TABLE payout_line (
 ```sql
 CREATE TABLE promotion (
   id            BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  ulid          CHAR(26) NOT NULL UNIQUE,   -- public identifier (admin references)
   code          VARCHAR(40) NOT NULL UNIQUE,
   type          ENUM('percentage','fixed','free_delivery') NOT NULL,
   value_bps     INT UNSIGNED NULL,          -- for percentage
   value_cents   BIGINT NULL,                -- for fixed
-  max_discount_cents BIGINT NULL,           -- cap
+  max_discount_cents BIGINT NULL,           -- cap (NULL = uncapped)
   min_subtotal_cents BIGINT NOT NULL DEFAULT 0,
   per_user_limit INT UNSIGNED NOT NULL DEFAULT 1,
   total_limit   INT UNSIGNED NULL,
   total_redeemed INT UNSIGNED NOT NULL DEFAULT 0,
   starts_at     DATETIME(3) NOT NULL,
   ends_at       DATETIME(3) NOT NULL,
-  is_active     TINYINT(1) NOT NULL DEFAULT 1
+  is_active     TINYINT(1) NOT NULL DEFAULT 1,
+  created_at    DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
 ) ENGINE=InnoDB;
+-- `promotion` ships in migration 0011 (Phase 3 Inc 4); the quote applies a promo as a preview
+-- (no redemption, so per_user_limit is not checked there). `promotion_redemption` below lands in
+-- Inc 5 with the order tables, where checkout enforces per_user_limit and records the redemption.
 
 CREATE TABLE promotion_redemption (
   id           BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,

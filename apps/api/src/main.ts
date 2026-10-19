@@ -20,6 +20,10 @@ import { createKnexDeliveryFeeRuleRepo } from './fees/repo';
 import { createMerchantService } from './merchant/merchant-service';
 import { createKnexMerchantRepo } from './merchant/repo';
 import { createRequireAuth } from './middleware/auth';
+import { createKnexPricingRepo } from './pricing/repo';
+import { createQuoteService } from './pricing/quote-service';
+import { createKnexPromotionRepo } from './promotions/repo';
+import { createPromotionService } from './promotions/promotion-service';
 import { createKnexZoneRepo } from './zones/repo';
 import { createZoneService } from './zones/zone-service';
 import { loadEnv } from './env';
@@ -86,6 +90,22 @@ function main(): void {
     requireAuth: auth.requireAuth,
   };
 
+  const promotionService = createPromotionService({
+    repo: createKnexPromotionRepo(db),
+    auditService: auth.auditService,
+  });
+  const promotions = { promotionService, requireAuth: auth.requireAuth };
+
+  const pricing = {
+    quoteService: createQuoteService({
+      repo: createKnexPricingRepo(db),
+      zones: zoneService,
+      fees: fees.feeService,
+      promotions: promotionService,
+    }),
+    requireAuth: auth.requireAuth,
+  };
+
   const app = createApp({
     logger,
     version: VERSION,
@@ -96,6 +116,8 @@ function main(): void {
     geo,
     fees,
     cart,
+    promotions,
+    pricing,
   });
 
   const server = app.listen(env.PORT, () => {

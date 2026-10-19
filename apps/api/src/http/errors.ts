@@ -45,5 +45,9 @@ export const conflict = (code: string, message: string): AppError =>
 export const validationFailed = (details: ErrorDetail[]): AppError =>
   new AppError(422, 'VALIDATION_FAILED', 'Validation failed', details);
 
+/** A 422 for a semantically invalid request with a domain-specific code (e.g. OUT_OF_ZONE). */
+export const unprocessable = (code: string, message: string): AppError =>
+  new AppError(422, code, message);
+
 export const tooManyRequests = (message = 'Too many requests'): AppError =>
   new AppError(429, 'RATE_LIMITED', message);
