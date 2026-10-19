@@ -27,12 +27,15 @@ export function createCaptureService(deps: CaptureServiceDeps) {
    * captures to the ledger and moves the order to `placed`; a failure releases the stock
    * reservation; an amount mismatch is quarantined (event kept, no capture).
    */
-  async function processStkResult(callback: StkCallback): Promise<CaptureOutcome> {
+  async function processStkResult(
+    callback: StkCallback,
+    source: 'stk_callback' | 'status_query' | 'reconciliation' = 'stk_callback',
+  ): Promise<CaptureOutcome> {
     return withTransaction(async ({ payments, ledger }) => {
       const payment = await payments.findPaymentByCheckoutRequestId(callback.checkoutRequestId);
       const fresh = await payments.insertPaymentEventDedup({
         paymentId: payment?.id ?? null,
-        source: 'stk_callback',
+        source,
         dedupeKey: `${callback.checkoutRequestId}:${callback.resultCode}`,
         resultCode: callback.resultCode,
         rawPayload: callback,

@@ -3,13 +3,15 @@ import { z } from 'zod';
 import { badRequest, forbidden } from '../http/errors';
 import { asyncHandler } from '../middleware/error';
 import type { CaptureService } from '../payments/capture-service';
-import { requireRole } from '../middleware/rbac';
+import { requirePolicy, requireRole } from '../middleware/rbac';
 import type { Actor, PaymentService } from '../payments/payment-service';
+import type { ReconcileService } from '../payments/reconcile-service';
 
 /** Payment dependencies for the app factory. */
 export interface PaymentsModule {
   paymentService: PaymentService;
   captureService: CaptureService;
+  reconcileService: ReconcileService;
   requireAuth: RequestHandler;
   /** Shared secret the STK callback must present; when undefined the webhook rejects all. */
   webhookToken: string | undefined;
@@ -136,6 +138,43 @@ export function devPaymentsRouter(
       const { outcome, amountCents } = simulateSchema.parse(req.body);
       const result = await captureService.simulate(req.params.ulid!, outcome, amountCents);
       res.status(200).json({ status: result });
+    }),
+  );
+
+  return router;
+}
+
+const reconcileSchema = z.object({
+  olderThanSec: z.number().int().min(0).max(86_400).optional(),
+});
+
+/**
+ * Admin reconciliation (doc 07 §5–6): resolve stale pending payments against the gateway, and a
+ * read-only divergence + ledger-invariant report. Reconcile mutates (captures/fails), so it is
+ * ops/admin; the report is read-only (finance/ops/admin via `audit:read`).
+ */
+export function adminReconcileRouter(
+  reconcileService: ReconcileService,
+  requireAuth: RequestHandler,
+): Router {
+  const router = express.Router();
+
+  router.post(
+    '/admin/payments/reconcile',
+    requireAuth,
+    requireRole('admin', 'ops'),
+    asyncHandler(async (req, res) => {
+      const { olderThanSec } = reconcileSchema.parse(req.body ?? {});
+      res.status(200).json(await reconcileService.reconcileStalePayments(olderThanSec));
+    }),
+  );
+
+  router.get(
+    '/admin/payments/reconciliation-report',
+    requireAuth,
+    requirePolicy('audit:read'),
+    asyncHandler(async (_req, res) => {
+      res.status(200).json(await reconcileService.reconciliationReport());
     }),
   );
 

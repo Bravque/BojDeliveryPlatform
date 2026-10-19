@@ -6,6 +6,7 @@ import { createApp } from '../app';
 import { createRequireAuth } from '../middleware/auth';
 import type { CaptureService } from '../payments/capture-service';
 import type { PaymentService, PaymentView } from '../payments/payment-service';
+import type { ReconcileService } from '../payments/reconcile-service';
 import { createLogger } from '../platform/logger';
 
 const WEBHOOK_TOKEN = 'test-webhook-token';
@@ -45,6 +46,19 @@ const captureService: CaptureService = {
   simulate: () => Promise.resolve('captured'),
 };
 
+const reconcileService: ReconcileService = {
+  reconcilePayment: () => Promise.resolve('skipped'),
+  reconcileStalePayments: () =>
+    Promise.resolve({ scanned: 0, captured: 0, failed: 0, stillPending: 0, other: 0 }),
+  reconciliationReport: () =>
+    Promise.resolve({
+      generatedAt: '2026-10-19T00:00:00.000Z',
+      ledgerBalanced: true,
+      imbalancedTransactionCount: 0,
+      items: [],
+    }),
+};
+
 function app() {
   return createApp({
     logger: createLogger({ level: 'silent' }),
@@ -52,6 +66,7 @@ function app() {
     payments: {
       paymentService,
       captureService,
+      reconcileService,
       requireAuth: createRequireAuth({ publicKey, issuer: ISSUER, audience: AUDIENCE }),
       webhookToken: WEBHOOK_TOKEN,
       allowDevSimulate: true,
@@ -146,5 +161,30 @@ describe('dev simulate (admin only)', () => {
       .send({ outcome: 'success' });
     expect(ok.status).toBe(200);
     expect(ok.body.status).toBe('captured');
+  });
+});
+
+describe('admin reconciliation', () => {
+  it('reconcile: forbids customer (403), allows ops (200)', async () => {
+    expect(
+      (await request(app()).post('/api/v1/admin/payments/reconcile').set(auth()).send({})).status,
+    ).toBe(403);
+    const ok = await request(app())
+      .post('/api/v1/admin/payments/reconcile')
+      .set('Authorization', `Bearer ${tokenFor(['ops'])}`)
+      .send({});
+    expect(ok.status).toBe(200);
+    expect(ok.body.scanned).toBe(0);
+  });
+
+  it('report: allowed for finance, forbidden for customer', async () => {
+    expect(
+      (await request(app()).get('/api/v1/admin/payments/reconciliation-report').set(auth())).status,
+    ).toBe(403);
+    const ok = await request(app())
+      .get('/api/v1/admin/payments/reconciliation-report')
+      .set('Authorization', `Bearer ${tokenFor(['finance'])}`);
+    expect(ok.status).toBe(200);
+    expect(ok.body.ledgerBalanced).toBe(true);
   });
 });

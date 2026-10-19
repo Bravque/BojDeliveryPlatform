@@ -9,6 +9,7 @@ import { createKnexLedgerRepo } from '../ledger/repo';
 import { createRequireAuth } from '../middleware/auth';
 import { createCaptureService } from '../payments/capture-service';
 import { createPaymentService } from '../payments/payment-service';
+import { createReconcileService } from '../payments/reconcile-service';
 import { createKnexPaymentsRepo } from '../payments/repo';
 import { SimulatedGateway } from '../payments/simulated-gateway';
 import { buildKnexConfig, createDb } from '../platform/db';
@@ -35,6 +36,15 @@ describe.skipIf(!DATABASE_URL)('STK capture integration (real MySQL)', () => {
 
   beforeAll(() => {
     db = createDb(buildKnexConfig({ DATABASE_URL: DATABASE_URL as string }));
+    const gateway = new SimulatedGateway();
+    const captureService = createCaptureService({
+      readRepo: createKnexPaymentsRepo(db),
+      withTransaction: (work) =>
+        db.transaction((trx) =>
+          work({ payments: createKnexPaymentsRepo(trx), ledger: createKnexLedgerRepo(trx) }),
+        ),
+      ledgerService: createLedgerService(),
+    });
     app = createApp({
       logger: createLogger({ level: 'silent' }),
       version: 'int',
@@ -42,16 +52,15 @@ describe.skipIf(!DATABASE_URL)('STK capture integration (real MySQL)', () => {
         paymentService: createPaymentService({
           readRepo: createKnexPaymentsRepo(db),
           withTransaction: (work) => db.transaction((trx) => work(createKnexPaymentsRepo(trx))),
-          gateway: new SimulatedGateway(),
+          gateway,
           method: 'simulated',
         }),
-        captureService: createCaptureService({
+        captureService,
+        reconcileService: createReconcileService({
           readRepo: createKnexPaymentsRepo(db),
-          withTransaction: (work) =>
-            db.transaction((trx) =>
-              work({ payments: createKnexPaymentsRepo(trx), ledger: createKnexLedgerRepo(trx) }),
-            ),
-          ledgerService: createLedgerService(),
+          gateway,
+          captureService,
+          ledgerReadRepo: createKnexLedgerRepo(db),
         }),
         requireAuth: createRequireAuth({ publicKey, issuer: 'boj-api', audience: 'boj-clients' }),
         webhookToken: WEBHOOK_TOKEN,

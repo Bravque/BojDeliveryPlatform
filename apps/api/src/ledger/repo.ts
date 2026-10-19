@@ -45,6 +45,8 @@ export interface LedgerRepo {
     amountCents: number;
   }): Promise<void>;
   getAccountBalances(): Promise<AccountBalance[]>;
+  /** Transaction ids whose debits ≠ credits — the ledger invariant breach (should always be empty). */
+  findImbalancedTransactions(): Promise<number[]>;
 }
 
 export function createKnexLedgerRepo(exec: Knex): LedgerRepo {
@@ -126,6 +128,16 @@ export function createKnexLedgerRepo(exec: Knex): LedgerRepo {
         debitCents: Number(r.debit_cents),
         creditCents: Number(r.credit_cents),
       }));
+    },
+
+    async findImbalancedTransactions() {
+      const rows = (await exec('ledger_entry')
+        .groupBy('transaction_id')
+        .havingRaw(
+          "SUM(CASE WHEN direction = 'debit' THEN amount_cents ELSE -amount_cents END) <> 0",
+        )
+        .select('transaction_id')) as Array<{ transaction_id: number | string }>;
+      return rows.map((r) => Number(r.transaction_id));
     },
   };
 }

@@ -96,6 +96,9 @@ class FakePaymentsRepo implements PaymentsRepo {
     return [];
   }
   async releaseStock() {}
+  async listOpenPayments() {
+    return [];
+  }
 }
 
 let pushes = 0;
@@ -105,7 +108,13 @@ const gateway: PaymentGateway = {
     return Promise.resolve({ checkoutRequestId: 'SIM-1', merchantRequestId: 'SIMMR-1' });
   },
   queryStkStatus: () =>
-    Promise.resolve({ status: 'pending', resultCode: 0, resultDesc: '', mpesaReceipt: null }),
+    Promise.resolve({
+      status: 'pending',
+      resultCode: 0,
+      resultDesc: '',
+      amountCents: null,
+      mpesaReceipt: null,
+    }),
 };
 
 const CUST: Actor = { ulid: 'cust', roles: ['customer'] };

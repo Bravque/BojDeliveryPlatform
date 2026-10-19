@@ -27,6 +27,7 @@ import { createKnexOrdersRepo } from './orders/repo';
 import { createCaptureService } from './payments/capture-service';
 import type { PaymentGateway } from './payments/gateway';
 import { createPaymentService } from './payments/payment-service';
+import { createReconcileService } from './payments/reconcile-service';
 import { createKnexPaymentsRepo, type PaymentMethod } from './payments/repo';
 import { SimulatedGateway } from './payments/simulated-gateway';
 import { createKnexPricingRepo } from './pricing/repo';
@@ -134,6 +135,14 @@ function main(): void {
   };
   const { gateway, method: paymentMethod } = buildGateway();
   const ledgerService = createLedgerService();
+  const captureService = createCaptureService({
+    readRepo: createKnexPaymentsRepo(db),
+    withTransaction: (work) =>
+      db.transaction((trx) =>
+        work({ payments: createKnexPaymentsRepo(trx), ledger: createKnexLedgerRepo(trx) }),
+      ),
+    ledgerService,
+  });
   const payments = {
     paymentService: createPaymentService({
       readRepo: createKnexPaymentsRepo(db),
@@ -141,13 +150,12 @@ function main(): void {
       gateway,
       method: paymentMethod,
     }),
-    captureService: createCaptureService({
+    captureService,
+    reconcileService: createReconcileService({
       readRepo: createKnexPaymentsRepo(db),
-      withTransaction: (work) =>
-        db.transaction((trx) =>
-          work({ payments: createKnexPaymentsRepo(trx), ledger: createKnexLedgerRepo(trx) }),
-        ),
-      ledgerService,
+      gateway,
+      captureService,
+      ledgerReadRepo: createKnexLedgerRepo(db),
     }),
     requireAuth: auth.requireAuth,
     webhookToken: env.MPESA_WEBHOOK_TOKEN,

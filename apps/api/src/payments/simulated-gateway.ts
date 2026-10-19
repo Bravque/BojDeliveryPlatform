@@ -13,8 +13,13 @@ import type {
  * dev simulate endpoint / reconciliation in later increments — via `setOutcome`. This lets the
  * full capture/refund/reconciliation machinery be built and tested before real Daraja credentials.
  */
+interface SimulatedOutcome {
+  status: StkStatus;
+  amountCents?: number | null;
+}
+
 export class SimulatedGateway implements PaymentGateway {
-  private readonly outcomes = new Map<string, StkStatus>();
+  private readonly outcomes = new Map<string, SimulatedOutcome>();
 
   initiateStkPush(_input: StkInitiateInput): Promise<StkInitiateResult> {
     return Promise.resolve({
@@ -23,26 +28,31 @@ export class SimulatedGateway implements PaymentGateway {
     });
   }
 
-  /** Pre-set the result a later `queryStkStatus` should report for a checkout (used by tests/reconciliation). */
-  setOutcome(checkoutRequestId: string, status: StkStatus): void {
-    this.outcomes.set(checkoutRequestId, status);
+  /**
+   * Pre-set the result a later `queryStkStatus` should report for a checkout (used by tests and
+   * reconciliation). `amountCents` is the amount the gateway reports it collected on success.
+   */
+  setOutcome(checkoutRequestId: string, status: StkStatus, amountCents?: number | null): void {
+    this.outcomes.set(checkoutRequestId, { status, amountCents });
   }
 
   queryStkStatus(checkoutRequestId: string): Promise<StkStatusResult> {
-    const status = this.outcomes.get(checkoutRequestId) ?? 'pending';
-    if (status === 'success') {
+    const outcome = this.outcomes.get(checkoutRequestId) ?? { status: 'pending' };
+    if (outcome.status === 'success') {
       return Promise.resolve({
-        status,
+        status: 'success',
         resultCode: 0,
         resultDesc: 'The service request is processed successfully.',
+        amountCents: outcome.amountCents ?? null,
         mpesaReceipt: `SIMRCPT${checkoutRequestId.slice(-8).toUpperCase()}`,
       });
     }
-    if (status === 'failed') {
+    if (outcome.status === 'failed') {
       return Promise.resolve({
-        status,
+        status: 'failed',
         resultCode: 1032,
         resultDesc: 'Request cancelled by user.',
+        amountCents: null,
         mpesaReceipt: null,
       });
     }
@@ -50,6 +60,7 @@ export class SimulatedGateway implements PaymentGateway {
       status: 'pending',
       resultCode: 1037,
       resultDesc: 'STK push pending.',
+      amountCents: null,
       mpesaReceipt: null,
     });
   }

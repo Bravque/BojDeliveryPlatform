@@ -52,6 +52,9 @@ class FakeLedgerRepo implements LedgerRepo {
   getAccountBalances(): Promise<AccountBalance[]> {
     return Promise.resolve([]);
   }
+  findImbalancedTransactions(): Promise<number[]> {
+    return Promise.resolve([]);
+  }
 }
 
 class FakeCapturePaymentsRepo implements PaymentsRepo {
@@ -148,6 +151,9 @@ class FakeCapturePaymentsRepo implements PaymentsRepo {
   }
   async markPending() {}
   async setOrderStatus() {}
+  async listOpenPayments() {
+    return [];
+  }
 }
 
 function makeSvc() {

@@ -89,6 +89,10 @@ export interface PaymentsRepo {
   ): Promise<void>;
   listOrderStockLines(orderId: number): Promise<Array<{ productId: number; quantity: number }>>;
   releaseStock(productId: number, quantity: number): Promise<void>;
+
+  // --- reconciliation (increment 4) ---
+  /** Non-terminal payments (pending/initiated); with `olderThan`, only those initiated before it. */
+  listOpenPayments(olderThan?: Date): Promise<PaymentRecord[]>;
 }
 
 interface PaymentRowDb {
@@ -322,6 +326,17 @@ export function createKnexPaymentsRepo(exec: Knex): PaymentsRepo {
         .where('product_id', productId)
         .where('track_stock', true)
         .update({ reserved: exec.raw('GREATEST(reserved - ?, 0)', [quantity]) });
+    },
+
+    async listOpenPayments(olderThan) {
+      const query = exec('payment')
+        .whereIn('status', ['pending', 'initiated'])
+        .orderBy('id', 'asc');
+      if (olderThan) {
+        query.where('initiated_at', '<', olderThan);
+      }
+      const rows = (await query) as PaymentRowDb[];
+      return rows.map(mapPayment);
     },
   };
 }
