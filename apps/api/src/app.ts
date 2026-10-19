@@ -12,6 +12,8 @@ import { adminFeeRulesRouter, type FeesModule } from './routes/fees';
 import { addressesRouter, adminZonesRouter, type GeoModule } from './routes/geo';
 import { healthRouter, type HealthDeps } from './routes/health';
 import { merchantRouter } from './routes/merchant';
+import { adminPromotionsRouter, type PromotionsModule } from './routes/promotions';
+import { quoteRouter, type PricingModule } from './routes/quote';
 
 export interface AppDeps {
   logger: Logger;
@@ -29,6 +31,10 @@ export interface AppDeps {
   fees?: FeesModule;
   /** When provided, mounts the `/api/v1` customer cart endpoints. */
   cart?: CartModule;
+  /** When provided, mounts the `/api/v1` admin promotion endpoints. */
+  promotions?: PromotionsModule;
+  /** When provided, mounts the `/api/v1/cart/quote` endpoint. */
+  pricing?: PricingModule;
 }
 
 /** Build the Express application. Pure factory — no network/DB side effects. */
@@ -52,7 +58,16 @@ export function createApp(deps: AppDeps): Express {
 
   app.use(healthRouter({ version: deps.version, checkReadiness: deps.checkReadiness }));
 
-  if (deps.auth || deps.merchant || deps.browse || deps.geo || deps.fees || deps.cart) {
+  if (
+    deps.auth ||
+    deps.merchant ||
+    deps.browse ||
+    deps.geo ||
+    deps.fees ||
+    deps.cart ||
+    deps.promotions ||
+    deps.pricing
+  ) {
     const apiV1 = express.Router();
     if (deps.auth) {
       apiV1.use(authRouter(deps.auth));
@@ -74,6 +89,14 @@ export function createApp(deps: AppDeps): Express {
     }
     if (deps.cart) {
       apiV1.use(cartRouter(deps.cart.cartService, deps.cart.requireAuth));
+    }
+    if (deps.promotions) {
+      apiV1.use(
+        adminPromotionsRouter(deps.promotions.promotionService, deps.promotions.requireAuth),
+      );
+    }
+    if (deps.pricing) {
+      apiV1.use(quoteRouter(deps.pricing.quoteService, deps.pricing.requireAuth));
     }
     app.use('/api/v1', apiV1);
   }
