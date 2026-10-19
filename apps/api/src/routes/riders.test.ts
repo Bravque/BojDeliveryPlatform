@@ -5,6 +5,7 @@ import { signAccessToken } from '../auth/tokens';
 import { createApp } from '../app';
 import { createRequireAuth } from '../middleware/auth';
 import { createLogger } from '../platform/logger';
+import type { PresenceService, PresenceView } from '../riders/presence-service';
 import type { RiderService, RiderSummary } from '../riders/rider-service';
 
 const { privateKey, publicKey } = generateKeyPairSync('rsa', {
@@ -35,12 +36,26 @@ const riderService: RiderService = {
   getOwnRider: () => Promise.resolve(summary),
 };
 
+const presence: PresenceView = {
+  userUlid: 'U1',
+  status: 'approved',
+  isOnline: true,
+  lastLat: -1.0634,
+  lastLng: 34.4731,
+};
+const presenceService: PresenceService = {
+  goOnline: () => Promise.resolve(presence),
+  goOffline: () => Promise.resolve({ ...presence, isOnline: false }),
+  ping: () => Promise.resolve(presence),
+};
+
 function app() {
   return createApp({
     logger: createLogger({ level: 'silent' }),
     version: 'test',
     riders: {
       riderService,
+      presenceService,
       requireAuth: createRequireAuth({ publicKey, issuer: ISSUER, audience: AUDIENCE }),
     },
   });
@@ -106,6 +121,38 @@ describe('rider admin onboarding (RBAC)', () => {
       .post('/api/v1/admin/riders/U1/suspend')
       .set('Authorization', `Bearer ${tokenFor(['admin'])}`)
       .send({});
+    expect(bad.status).toBe(422);
+  });
+});
+
+describe('rider presence (RBAC + validation)', () => {
+  it('forbids a non-rider going online (403), allows a rider (200)', async () => {
+    expect(
+      (
+        await request(app())
+          .post('/api/v1/rider/online')
+          .set('Authorization', `Bearer ${tokenFor(['customer'])}`)
+      ).status,
+    ).toBe(403);
+    const ok = await request(app())
+      .post('/api/v1/rider/online')
+      .set('Authorization', `Bearer ${tokenFor(['rider'])}`);
+    expect(ok.status).toBe(200);
+    expect(ok.body.isOnline).toBe(true);
+  });
+
+  it('pings with coordinates (200), rejects an out-of-range lat (422)', async () => {
+    const ok = await request(app())
+      .post('/api/v1/rider/ping')
+      .set('Authorization', `Bearer ${tokenFor(['rider'])}`)
+      .send({ lat: -1.0634, lng: 34.4731 });
+    expect(ok.status).toBe(200);
+    expect(ok.body.lastLat).toBe(-1.0634);
+
+    const bad = await request(app())
+      .post('/api/v1/rider/ping')
+      .set('Authorization', `Bearer ${tokenFor(['rider'])}`)
+      .send({ lat: 999, lng: 0 });
     expect(bad.status).toBe(422);
   });
 });

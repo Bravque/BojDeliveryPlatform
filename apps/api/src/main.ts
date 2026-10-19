@@ -35,6 +35,7 @@ import { createKnexPricingRepo } from './pricing/repo';
 import { createQuoteService } from './pricing/quote-service';
 import { createKnexPromotionRepo } from './promotions/repo';
 import { createPromotionService } from './promotions/promotion-service';
+import { createPresenceService } from './riders/presence-service';
 import { createRiderService } from './riders/rider-service';
 import { createKnexRiderRepo } from './riders/repo';
 import { createKnexZoneRepo } from './zones/repo';
@@ -178,6 +179,10 @@ function main(): void {
     riderService: createRiderService({
       repo: createKnexRiderRepo(db),
       auditService: auth.auditService,
+    }),
+    presenceService: createPresenceService({
+      repo: createKnexRiderRepo(db),
+      pingMinIntervalSec: env.RIDER_PING_MIN_INTERVAL_SEC,
     }),
     requireAuth: auth.requireAuth,
   };

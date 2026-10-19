@@ -2,11 +2,13 @@ import express, { type Request, type RequestHandler, type Router } from 'express
 import { z } from 'zod';
 import { asyncHandler } from '../middleware/error';
 import { requireRole } from '../middleware/rbac';
+import type { PresenceService } from '../riders/presence-service';
 import type { Actor, RiderService } from '../riders/rider-service';
 
 /** Rider domain dependencies for the app factory. */
 export interface RidersModule {
   riderService: RiderService;
+  presenceService: PresenceService;
   requireAuth: RequestHandler;
 }
 
@@ -14,6 +16,10 @@ const applySchema = z.object({
   vehicleType: z.enum(['motorbike', 'bicycle', 'car', 'foot']),
 });
 const suspendSchema = z.object({ reason: z.string().min(1).max(255) });
+const pingSchema = z.object({
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+});
 
 function actorOf(req: Request): Actor {
   const principal = req.principal!;
@@ -41,6 +47,45 @@ export function riderRouter(riderService: RiderService, requireAuth: RequestHand
     requireAuth,
     asyncHandler(async (req, res) => {
       res.status(200).json(await riderService.getOwnRider(actorOf(req)));
+    }),
+  );
+
+  return router;
+}
+
+/**
+ * Rider presence (`/api/v1/rider/{online,offline,ping}`) — approved riders only. These feed
+ * candidate selection in increment 4 (`is_online` + ping freshness).
+ */
+export function presenceRouter(
+  presenceService: PresenceService,
+  requireAuth: RequestHandler,
+): Router {
+  const router = express.Router();
+  const riderOnly: RequestHandler[] = [requireAuth, requireRole('rider')];
+
+  router.post(
+    '/rider/online',
+    ...riderOnly,
+    asyncHandler(async (req, res) => {
+      res.status(200).json(await presenceService.goOnline(actorOf(req)));
+    }),
+  );
+
+  router.post(
+    '/rider/offline',
+    ...riderOnly,
+    asyncHandler(async (req, res) => {
+      res.status(200).json(await presenceService.goOffline(actorOf(req)));
+    }),
+  );
+
+  router.post(
+    '/rider/ping',
+    ...riderOnly,
+    asyncHandler(async (req, res) => {
+      const { lat, lng } = pingSchema.parse(req.body ?? {});
+      res.status(200).json(await presenceService.ping(actorOf(req), { lat, lng }));
     }),
   );
 

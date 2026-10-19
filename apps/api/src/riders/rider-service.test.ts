@@ -49,6 +49,22 @@ class FakeRiderRepo implements RiderRepo {
     this.globalRoles.push({ userId, roleCode });
     return Promise.resolve();
   }
+  setOnline(userId: number, isOnline: boolean): Promise<void> {
+    const r = this.riders.find((x) => x.userId === userId);
+    if (r) {
+      r.isOnline = isOnline;
+    }
+    return Promise.resolve();
+  }
+  recordPing(userId: number, lat: number, lng: number): Promise<void> {
+    const r = this.riders.find((x) => x.userId === userId);
+    if (r) {
+      r.lastLat = lat;
+      r.lastLng = lng;
+      r.lastPingAt = new Date();
+    }
+    return Promise.resolve();
+  }
 }
 
 const ADMIN: Actor = { ulid: 'ADMIN-ULID', roles: ['admin'] };
