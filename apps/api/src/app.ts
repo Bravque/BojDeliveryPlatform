@@ -14,6 +14,7 @@ import { healthRouter, type HealthDeps } from './routes/health';
 import { merchantRouter } from './routes/merchant';
 import { ordersRouter, type OrdersModule } from './routes/orders';
 import {
+  adminReconcileRouter,
   devPaymentsRouter,
   paymentsRouter,
   stkWebhookRouter,
@@ -117,6 +118,7 @@ export function createApp(deps: AppDeps): Express {
     if (deps.payments) {
       apiV1.use(paymentsRouter(deps.payments.paymentService, deps.payments.requireAuth));
       apiV1.use(stkWebhookRouter(deps.payments.captureService, deps.payments.webhookToken));
+      apiV1.use(adminReconcileRouter(deps.payments.reconcileService, deps.payments.requireAuth));
       if (deps.payments.allowDevSimulate) {
         apiV1.use(devPaymentsRouter(deps.payments.captureService, deps.payments.requireAuth));
       }

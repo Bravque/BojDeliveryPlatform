@@ -23,6 +23,7 @@ export interface StkStatusResult {
   status: StkStatus;
   resultCode: number;
   resultDesc: string;
+  amountCents: number | null;
   mpesaReceipt: string | null;
 }
 

@@ -62,6 +62,9 @@ class FakeLedgerRepo implements LedgerRepo {
     }
     return Promise.resolve([...res.values()]);
   }
+  findImbalancedTransactions(): Promise<number[]> {
+    return Promise.resolve([]);
+  }
 }
 
 /** A platform-funded (D4) capture posting for an order. */
