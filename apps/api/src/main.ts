@@ -35,6 +35,8 @@ import { createKnexPricingRepo } from './pricing/repo';
 import { createQuoteService } from './pricing/quote-service';
 import { createKnexPromotionRepo } from './promotions/repo';
 import { createPromotionService } from './promotions/promotion-service';
+import { createRiderService } from './riders/rider-service';
+import { createKnexRiderRepo } from './riders/repo';
 import { createKnexZoneRepo } from './zones/repo';
 import { createZoneService } from './zones/zone-service';
 import { loadEnv } from './env';
@@ -172,6 +174,14 @@ function main(): void {
     allowDevSimulate: env.NODE_ENV !== 'production',
   };
 
+  const riders = {
+    riderService: createRiderService({
+      repo: createKnexRiderRepo(db),
+      auditService: auth.auditService,
+    }),
+    requireAuth: auth.requireAuth,
+  };
+
   const app = createApp({
     logger,
     version: VERSION,
@@ -186,6 +196,7 @@ function main(): void {
     pricing,
     orders,
     payments,
+    riders,
   });
 
   const server = app.listen(env.PORT, () => {

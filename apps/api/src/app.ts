@@ -24,6 +24,7 @@ import {
 } from './routes/payments';
 import { adminPromotionsRouter, type PromotionsModule } from './routes/promotions';
 import { quoteRouter, type PricingModule } from './routes/quote';
+import { adminRiderRouter, riderRouter, type RidersModule } from './routes/riders';
 
 export interface AppDeps {
   logger: Logger;
@@ -49,6 +50,8 @@ export interface AppDeps {
   orders?: OrdersModule;
   /** When provided, mounts the `/api/v1` payment endpoints. */
   payments?: PaymentsModule;
+  /** When provided, mounts the `/api/v1` rider onboarding + self-service endpoints. */
+  riders?: RidersModule;
 }
 
 /** Build the Express application. Pure factory — no network/DB side effects. */
@@ -82,7 +85,8 @@ export function createApp(deps: AppDeps): Express {
     deps.promotions ||
     deps.pricing ||
     deps.orders ||
-    deps.payments
+    deps.payments ||
+    deps.riders
   ) {
     const apiV1 = express.Router();
     if (deps.auth) {
@@ -126,6 +130,10 @@ export function createApp(deps: AppDeps): Express {
         apiV1.use(devPaymentsRouter(deps.payments.captureService, deps.payments.requireAuth));
         apiV1.use(devRefundsRouter(deps.payments.refundService, deps.payments.requireAuth));
       }
+    }
+    if (deps.riders) {
+      apiV1.use(riderRouter(deps.riders.riderService, deps.riders.requireAuth));
+      apiV1.use(adminRiderRouter(deps.riders.riderService, deps.riders.requireAuth));
     }
     app.use('/api/v1', apiV1);
   }
