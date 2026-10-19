@@ -272,7 +272,8 @@ CREATE TABLE delivery_fee_rule (
 CREATE TABLE cart (
   id          BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
   user_id     BIGINT UNSIGNED NOT NULL,
-  merchant_id BIGINT UNSIGNED NULL,           -- single-merchant invariant
+  merchant_id BIGINT UNSIGNED NULL,           -- single-merchant invariant (set by 1st item, cleared when empty)
+  created_at  DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at  DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   UNIQUE (user_id),                           -- one active cart per user at launch
   FOREIGN KEY (user_id) REFERENCES user(id),
@@ -281,10 +282,11 @@ CREATE TABLE cart (
 
 CREATE TABLE cart_item (
   id          BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  ulid        CHAR(26) NOT NULL UNIQUE,       -- public identifier (clients address a line by ulid)
   cart_id     BIGINT UNSIGNED NOT NULL,
   product_id  BIGINT UNSIGNED NOT NULL,
   quantity    INT UNSIGNED NOT NULL,
-  options_json JSON NULL,                     -- selected option ids (validated server-side)
+  options_json JSON NULL,                     -- selected option ULIDs (validated server-side)
   FOREIGN KEY (cart_id) REFERENCES cart(id) ON DELETE CASCADE,
   FOREIGN KEY (product_id) REFERENCES product(id)
 ) ENGINE=InnoDB;
