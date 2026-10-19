@@ -2,6 +2,8 @@ import { createAddressService } from './addresses/address-service';
 import { createKnexAddressRepo } from './addresses/repo';
 import { createAuditService } from './auth/audit-service';
 import { loadAuthConfig } from './auth/config';
+import { createCartService } from './cart/cart-service';
+import { createKnexCartRepo } from './cart/repo';
 import { createOtpService } from './auth/otp-service';
 import { createPasswordService } from './auth/password-service';
 import { createKnexAuthRepo } from './auth/repo';
@@ -79,6 +81,11 @@ function main(): void {
     requireAuth: auth.requireAuth,
   };
 
+  const cart = {
+    cartService: createCartService({ repo: createKnexCartRepo(db) }),
+    requireAuth: auth.requireAuth,
+  };
+
   const app = createApp({
     logger,
     version: VERSION,
@@ -88,6 +95,7 @@ function main(): void {
     browse,
     geo,
     fees,
+    cart,
   });
 
   const server = app.listen(env.PORT, () => {

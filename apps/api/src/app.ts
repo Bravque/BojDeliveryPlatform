@@ -7,6 +7,7 @@ import { merchantAdminRouter, type MerchantModule } from './routes/admin-merchan
 import { adminRouter } from './routes/admin';
 import { authRouter, type AuthModule } from './routes/auth';
 import { browseRouter, type BrowseModule } from './routes/browse';
+import { cartRouter, type CartModule } from './routes/cart';
 import { adminFeeRulesRouter, type FeesModule } from './routes/fees';
 import { addressesRouter, adminZonesRouter, type GeoModule } from './routes/geo';
 import { healthRouter, type HealthDeps } from './routes/health';
@@ -26,6 +27,8 @@ export interface AppDeps {
   geo?: GeoModule;
   /** When provided, mounts the `/api/v1` admin delivery-fee-rule endpoints. */
   fees?: FeesModule;
+  /** When provided, mounts the `/api/v1` customer cart endpoints. */
+  cart?: CartModule;
 }
 
 /** Build the Express application. Pure factory — no network/DB side effects. */
@@ -49,7 +52,7 @@ export function createApp(deps: AppDeps): Express {
 
   app.use(healthRouter({ version: deps.version, checkReadiness: deps.checkReadiness }));
 
-  if (deps.auth || deps.merchant || deps.browse || deps.geo || deps.fees) {
+  if (deps.auth || deps.merchant || deps.browse || deps.geo || deps.fees || deps.cart) {
     const apiV1 = express.Router();
     if (deps.auth) {
       apiV1.use(authRouter(deps.auth));
@@ -68,6 +71,9 @@ export function createApp(deps: AppDeps): Express {
     }
     if (deps.fees) {
       apiV1.use(adminFeeRulesRouter(deps.fees.feeService, deps.fees.requireAuth));
+    }
+    if (deps.cart) {
+      apiV1.use(cartRouter(deps.cart.cartService, deps.cart.requireAuth));
     }
     app.use('/api/v1', apiV1);
   }
