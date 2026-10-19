@@ -22,6 +22,10 @@ import { createKnexMerchantRepo } from './merchant/repo';
 import { createRequireAuth } from './middleware/auth';
 import { createOrderService } from './orders/order-service';
 import { createKnexOrdersRepo } from './orders/repo';
+import type { PaymentGateway } from './payments/gateway';
+import { createPaymentService } from './payments/payment-service';
+import { createKnexPaymentsRepo, type PaymentMethod } from './payments/repo';
+import { SimulatedGateway } from './payments/simulated-gateway';
 import { createKnexPricingRepo } from './pricing/repo';
 import { createQuoteService } from './pricing/quote-service';
 import { createKnexPromotionRepo } from './promotions/repo';
@@ -118,6 +122,24 @@ function main(): void {
     requireAuth: auth.requireAuth,
   };
 
+  // Only the simulated gateway is implemented until Daraja go-live (Phase 8).
+  const buildGateway = (): { gateway: PaymentGateway; method: PaymentMethod } => {
+    if (env.PAYMENT_PROVIDER === 'simulated') {
+      return { gateway: new SimulatedGateway(), method: 'simulated' };
+    }
+    throw new Error(`PAYMENT_PROVIDER '${env.PAYMENT_PROVIDER}' is not implemented yet (Phase 8)`);
+  };
+  const { gateway, method: paymentMethod } = buildGateway();
+  const payments = {
+    paymentService: createPaymentService({
+      readRepo: createKnexPaymentsRepo(db),
+      withTransaction: (work) => db.transaction((trx) => work(createKnexPaymentsRepo(trx))),
+      gateway,
+      method: paymentMethod,
+    }),
+    requireAuth: auth.requireAuth,
+  };
+
   const app = createApp({
     logger,
     version: VERSION,
@@ -131,6 +153,7 @@ function main(): void {
     promotions,
     pricing,
     orders,
+    payments,
   });
 
   const server = app.listen(env.PORT, () => {
