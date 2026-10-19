@@ -50,7 +50,11 @@ describe.skipIf(!DATABASE_URL)('public browse integration (real MySQL)', () => {
     }
     await db.raw('SET FOREIGN_KEY_CHECKS = 1');
 
-    const [townId] = await db('town').insert({ name: 'Migori', is_active: true });
+    const [townId] = await db('town').insert({
+      ulid: 'T1'.padEnd(26, '0'),
+      name: 'Migori',
+      is_active: true,
+    });
     const base = { town_id: townId, category_type: 'restaurant', commission_bps: 1000 };
     const [m1] = await db('merchant').insert({
       ...base,

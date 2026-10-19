@@ -1,3 +1,5 @@
+import { createAddressService } from './addresses/address-service';
+import { createKnexAddressRepo } from './addresses/repo';
 import { createAuditService } from './auth/audit-service';
 import { loadAuthConfig } from './auth/config';
 import { createOtpService } from './auth/otp-service';
@@ -14,6 +16,8 @@ import { createKnexCatalogueRepo } from './catalogue/repo';
 import { createMerchantService } from './merchant/merchant-service';
 import { createKnexMerchantRepo } from './merchant/repo';
 import { createRequireAuth } from './middleware/auth';
+import { createKnexZoneRepo } from './zones/repo';
+import { createZoneService } from './zones/zone-service';
 import { loadEnv } from './env';
 import { buildKnexConfig, checkDbHealth, createDb } from './platform/db';
 import { createLogger } from './platform/logger';
@@ -55,6 +59,16 @@ function main(): void {
     browseService: createBrowseService({ repo: createKnexBrowseRepo(db) }),
   };
 
+  const zoneService = createZoneService({
+    repo: createKnexZoneRepo(db),
+    auditService: auth.auditService,
+  });
+  const geo = {
+    zoneService,
+    addressService: createAddressService({ repo: createKnexAddressRepo(db), zoneService }),
+    requireAuth: auth.requireAuth,
+  };
+
   const app = createApp({
     logger,
     version: VERSION,
@@ -62,6 +76,7 @@ function main(): void {
     auth,
     merchant,
     browse,
+    geo,
   });
 
   const server = app.listen(env.PORT, () => {

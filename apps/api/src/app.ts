@@ -7,6 +7,7 @@ import { merchantAdminRouter, type MerchantModule } from './routes/admin-merchan
 import { adminRouter } from './routes/admin';
 import { authRouter, type AuthModule } from './routes/auth';
 import { browseRouter, type BrowseModule } from './routes/browse';
+import { addressesRouter, adminZonesRouter, type GeoModule } from './routes/geo';
 import { healthRouter, type HealthDeps } from './routes/health';
 import { merchantRouter } from './routes/merchant';
 
@@ -20,6 +21,8 @@ export interface AppDeps {
   merchant?: MerchantModule;
   /** When provided, mounts the public `/api/v1` catalogue-browse endpoints (no auth). */
   browse?: BrowseModule;
+  /** When provided, mounts the `/api/v1` zone-admin + customer-address endpoints. */
+  geo?: GeoModule;
 }
 
 /** Build the Express application. Pure factory — no network/DB side effects. */
@@ -43,7 +46,7 @@ export function createApp(deps: AppDeps): Express {
 
   app.use(healthRouter({ version: deps.version, checkReadiness: deps.checkReadiness }));
 
-  if (deps.auth || deps.merchant || deps.browse) {
+  if (deps.auth || deps.merchant || deps.browse || deps.geo) {
     const apiV1 = express.Router();
     if (deps.auth) {
       apiV1.use(authRouter(deps.auth));
@@ -55,6 +58,10 @@ export function createApp(deps: AppDeps): Express {
     }
     if (deps.browse) {
       apiV1.use(browseRouter(deps.browse.browseService));
+    }
+    if (deps.geo) {
+      apiV1.use(adminZonesRouter(deps.geo.zoneService, deps.geo.requireAuth));
+      apiV1.use(addressesRouter(deps.geo.addressService, deps.geo.requireAuth));
     }
     app.use('/api/v1', apiV1);
   }

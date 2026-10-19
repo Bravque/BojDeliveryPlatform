@@ -58,10 +58,10 @@ For each task:
 > `docs/architecture/decisions/decision-log.md` + ADRs. Repo:
 > https://github.com/Bravque/BojDeliveryPlatform (public).
 
-**Current status (2026-10-18):** **Phase 2 — Catalogue, inventory & merchants** nearly complete.
-Inc 1–4 merged; Inc 5 (public catalogue browse) in progress — the final Phase 2 increment. After
-it merges, **Phase 3 (Cart, pricing & order creation)** is next. **Phases 0–1 complete & merged.**
-`main` is protected.
+**Current status (2026-10-19):** **Phase 2 — Catalogue, inventory & merchants** complete & merged
+(Inc 1–5, PRs #8–#13). **Phase 3 — Cart, pricing & order creation** in progress: Inc 1 (delivery
+zones + customer addresses) implemented on `phase-3-zones` (open PR). **Phases 0–2 complete &
+merged.** `main` is protected.
 
 ## How to resume (workflow + environment)
 - **Stack:** pnpm 9 + Turborepo monorepo. `apps/api` = Node/Express + Knex + MySQL;
@@ -84,8 +84,8 @@ it merges, **Phase 3 (Cart, pricing & order creation)** is next. **Phases 0–1 
 ## Delivery phases (scope — ticked as merged)
 - [x] **Phase 0 — Foundations & scaffolding** (PR #1): monorepo, CI, config/money, DB+migrations, health, logging.
 - [x] **Phase 1 — Identity, roles & authorization** (PRs #2–#6; integration-test CI #7): phone-OTP + dashboard email/password (argon2id, lockout, no enumeration); RS256 access + rotating refresh with reuse detection; `requireAuth`, `/me`; RBAC policy (role + ownership + separation of duties); append-only audit log.
-- [ ] **Phase 2 — Catalogue, inventory & merchants** *(nearly complete)*: ✅ Inc1 merchants + admin onboarding (PR #8). ✅ Inc2 catalogue CRUD + merchant profile + optimistic price lock (PR #9). ✅ Inc3 options & availability (min/max-select) (PR #11). ✅ Inc4 inventory + reserve/release (concurrency) (PR #12). ⬜ Inc5 public browse (approved/open only; town-level filtering) *(in progress)*.
-- [ ] **Phase 3 — Cart, pricing & order creation (no payment)**: cart, `POST /cart/quote`, zone resolution + delivery fee, promotions, `POST /orders` with stock reservation + full price snapshot, order state machine (draft/cancelled).
+- [x] **Phase 2 — Catalogue, inventory & merchants** *(complete)*: ✅ Inc1 merchants + admin onboarding (PR #8). ✅ Inc2 catalogue CRUD + merchant profile + optimistic price lock (PR #9). ✅ Inc3 options & availability (min/max-select) (PR #11). ✅ Inc4 inventory + reserve/release (concurrency) (PR #12). ✅ Inc5 public browse (approved/open only; town-level filtering) (PR #13).
+- [ ] **Phase 3 — Cart, pricing & order creation (no payment)** *(in progress)*: ✅ Inc1 delivery zones (**circle model**, D13) + customer addresses + zone resolution (open PR `phase-3-zones`). ⬜ Inc2 delivery-fee rules + haversine fee calc. ⬜ Inc3 cart. ⬜ Inc4 `POST /cart/quote` + promotions. ⬜ Inc5 `POST /orders` (stock reservation + price snapshot) + order state machine (draft/cancelled).
 - [ ] **Phase 4 — Payments (simulated) & ledger**: `PaymentGateway` + `SimulatedGateway`, STK initiate/callback/status, double-entry ledger, idempotency/dedupe, timeouts, reconciliation, refunds.
 - [ ] **Phase 5 — Rider onboarding, assignment & delivery**: onboarding/approval, online/offline, candidate selection, time-boxed offers, atomic accept, pickup/deliver with **PIN proof** (D7), earnings accrual.
 - [ ] **Phase 6 — Realtime, notifications & client apps (MVP)**: Socket.IO (order/offers/merchant) with room auth, push + SMS, customer/rider/merchant/admin MVP flows.
@@ -107,6 +107,7 @@ it merges, **Phase 3 (Cart, pricing & order creation)** is next. **Phases 0–1 
 | #10 | — | CLAUDE.md living status & roadmap |
 | #11 | 2.3 | Product option groups & options |
 | #12 | 2.4 | Inventory + reserve/release (concurrency) |
+| #13 | 2.5 | Public catalogue browse (approved/open only) |
 
 ## Key locked decisions (see decision-log.md / ADRs)
 - **Launch (D1):** Migori; zones are configurable DB records; **spatial zone resolution deferred to Phase 3**.

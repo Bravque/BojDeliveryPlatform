@@ -3,11 +3,12 @@ import type { Knex } from 'knex';
 /**
  * Read-only persistence for the public catalogue (doc 05). Only **approved + open** merchants and
  * **available** products/options are ever returned; the filters live in SQL so a closed/pending
- * merchant or an unavailable product can never leak to customers. Town is referenced by name at
- * launch (one town, D1); a stable town identifier arrives with geo/zones in Phase 3.
+ * merchant or an unavailable product can never leak to customers. Towns now carry a stable public
+ * `ulid` (added with zones in Phase 3) alongside the display name.
  */
 
 export interface TownItem {
+  ulid: string;
   name: string;
   timezone: string;
 }
@@ -86,6 +87,7 @@ export interface BrowseRepo {
 }
 
 interface TownRow {
+  ulid: string;
   name: string;
   timezone: string;
 }
@@ -149,8 +151,8 @@ export function createKnexBrowseRepo(db: Knex): BrowseRepo {
       const rows = (await db('town')
         .where('is_active', true)
         .orderBy('name')
-        .select('name', 'timezone')) as TownRow[];
-      return rows.map((r) => ({ name: r.name, timezone: r.timezone }));
+        .select('ulid', 'name', 'timezone')) as TownRow[];
+      return rows.map((r) => ({ ulid: r.ulid, name: r.name, timezone: r.timezone }));
     },
 
     async listMerchants(filters) {

@@ -77,7 +77,11 @@ describe.skipIf(!DATABASE_URL)('catalogue integration (real MySQL)', () => {
     }
     await db.raw('SET FOREIGN_KEY_CHECKS = 1');
 
-    const [townId] = await db('town').insert({ name: 'Migori', is_active: true });
+    const [townId] = await db('town').insert({
+      ulid: 'T1'.padEnd(26, '0'),
+      name: 'Migori',
+      is_active: true,
+    });
     const [ownerId] = await db('user').insert({
       ulid: OWNER_ULID,
       phone_e164: '+254700000077',
