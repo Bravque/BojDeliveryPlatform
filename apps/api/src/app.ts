@@ -24,7 +24,7 @@ import {
 } from './routes/payments';
 import { adminPromotionsRouter, type PromotionsModule } from './routes/promotions';
 import { quoteRouter, type PricingModule } from './routes/quote';
-import { adminRiderRouter, riderRouter, type RidersModule } from './routes/riders';
+import { adminRiderRouter, presenceRouter, riderRouter, type RidersModule } from './routes/riders';
 
 export interface AppDeps {
   logger: Logger;
@@ -133,6 +133,7 @@ export function createApp(deps: AppDeps): Express {
     }
     if (deps.riders) {
       apiV1.use(riderRouter(deps.riders.riderService, deps.riders.requireAuth));
+      apiV1.use(presenceRouter(deps.riders.presenceService, deps.riders.requireAuth));
       apiV1.use(adminRiderRouter(deps.riders.riderService, deps.riders.requireAuth));
     }
     app.use('/api/v1', apiV1);

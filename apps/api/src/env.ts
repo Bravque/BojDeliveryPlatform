@@ -10,6 +10,9 @@ const envSchema = z.object({
   PAYMENT_PROVIDER: z.enum(['simulated', 'daraja_sandbox', 'daraja_prod']).default('simulated'),
   // Shared secret for the M-Pesa STK callback webhook (doc 07 §3). When unset the webhook rejects.
   MPESA_WEBHOOK_TOKEN: z.string().min(1).optional(),
+  // Minimum seconds between accepted rider location pings (doc 08 §3 — throttle). Below this, a
+  // ping is a silent no-op so a chatty client can't hammer the DB.
+  RIDER_PING_MIN_INTERVAL_SEC: z.coerce.number().int().min(0).max(3600).default(10),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;

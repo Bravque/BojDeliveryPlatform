@@ -30,6 +30,11 @@ export interface RiderRepo {
   setRiderStatus(userId: number, status: RiderStatus): Promise<void>;
   /** Idempotently grant a global role (user_role) so the policy layer recognizes the user. */
   grantGlobalRole(userId: number, roleCode: string): Promise<void>;
+
+  // --- presence (increment 2) ---
+  setOnline(userId: number, isOnline: boolean): Promise<void>;
+  /** Record the latest location ping (updates last_lat/last_lng/last_ping_at = now). */
+  recordPing(userId: number, lat: number, lng: number): Promise<void>;
 }
 
 interface RiderRowDb {
@@ -105,6 +110,16 @@ export function createKnexRiderRepo(db: Knex): RiderRepo {
 
     async setRiderStatus(userId, status) {
       await db('rider_profile').where({ user_id: userId }).update({ status });
+    },
+
+    async setOnline(userId, isOnline) {
+      await db('rider_profile').where({ user_id: userId }).update({ is_online: isOnline });
+    },
+
+    async recordPing(userId, lat, lng) {
+      await db('rider_profile')
+        .where({ user_id: userId })
+        .update({ last_lat: lat, last_lng: lng, last_ping_at: db.raw('CURRENT_TIMESTAMP(3)') });
     },
 
     async grantGlobalRole(userId, roleCode) {

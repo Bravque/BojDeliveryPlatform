@@ -9,6 +9,7 @@ import { signAccessToken } from '../auth/tokens';
 import { createApp } from '../app';
 import { createRequireAuth } from '../middleware/auth';
 import { createKnexRiderRepo } from '../riders/repo';
+import { createPresenceService } from '../riders/presence-service';
 import { createRiderService } from '../riders/rider-service';
 import { buildKnexConfig, createDb } from '../platform/db';
 import { createLogger } from '../platform/logger';
@@ -45,6 +46,10 @@ describe.skipIf(!DATABASE_URL)('rider onboarding integration (real MySQL)', () =
         riderService: createRiderService({
           repo: createKnexRiderRepo(db),
           auditService: createAuditService(createKnexAuthRepo(db)),
+        }),
+        presenceService: createPresenceService({
+          repo: createKnexRiderRepo(db),
+          pingMinIntervalSec: 10,
         }),
         requireAuth: createRequireAuth({ publicKey, issuer: ISSUER, audience: AUDIENCE }),
       },
