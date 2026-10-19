@@ -13,6 +13,8 @@ import { createKnexBrowseRepo } from './browse/repo';
 import { createBrowseService } from './browse/service';
 import { createCatalogueService } from './catalogue/catalogue-service';
 import { createKnexCatalogueRepo } from './catalogue/repo';
+import { createFeeService } from './fees/fee-service';
+import { createKnexDeliveryFeeRuleRepo } from './fees/repo';
 import { createMerchantService } from './merchant/merchant-service';
 import { createKnexMerchantRepo } from './merchant/repo';
 import { createRequireAuth } from './middleware/auth';
@@ -69,6 +71,14 @@ function main(): void {
     requireAuth: auth.requireAuth,
   };
 
+  const fees = {
+    feeService: createFeeService({
+      repo: createKnexDeliveryFeeRuleRepo(db),
+      auditService: auth.auditService,
+    }),
+    requireAuth: auth.requireAuth,
+  };
+
   const app = createApp({
     logger,
     version: VERSION,
@@ -77,6 +87,7 @@ function main(): void {
     merchant,
     browse,
     geo,
+    fees,
   });
 
   const server = app.listen(env.PORT, () => {
