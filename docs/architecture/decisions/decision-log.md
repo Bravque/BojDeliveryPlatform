@@ -5,6 +5,26 @@ documents (`../01`…`../12`) are updated to match and point back here.
 
 ---
 
+## 2026-10-19 — Phase 4: promotion funding (D4) + capture ledger split
+
+| ID | Decision | Accepted value | Notes / guardrails |
+|----|----------|----------------|--------------------|
+| **D4** | Who funds promotion discounts | **Platform-funded.** The merchant is paid on the full subtotal (minus commission); the platform absorbs the discount to a `promo_expense` account. | Resolves the doc-12 open item (leaning confirmed). Keeps merchant economics independent of platform marketing promos. Merchant-funded promos can be added later as a per-promotion attribute without changing the ledger primitive. |
+
+**Capture ledger split** (customer pays `total = subtotal + delivery_fee + service_fee − discount`), posted atomically with the payment/order state change (doc 07 §7):
+```
+DR mpesa_clearing              total
+DR promo_expense               discount                 // platform-funded (D4)
+  CR merchant_payable:{m}        subtotal − commission
+  CR commission_revenue          commission
+  CR platform_delivery_income    delivery_fee           // reclassed to rider_payable on delivery (Phase 5)
+  CR platform_service_income     service_fee
+```
+Debits (`total + discount`) == credits (`subtotal + delivery + service`). Shipped: ledger tables +
+`LedgerService` in Phase 4 Inc 1 (migration `0013_ledger`); the capture posting lands in Inc 3.
+
+---
+
 ## 2026-10-19 — Phase 3: delivery zones modelled as circles (not GEOMETRY polygons)
 
 | ID | Decision | Accepted value | Notes / guardrails |
