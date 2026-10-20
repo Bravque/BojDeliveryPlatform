@@ -13,6 +13,15 @@ const envSchema = z.object({
   // Minimum seconds between accepted rider location pings (doc 08 §3 — throttle). Below this, a
   // ping is a silent no-op so a chatty client can't hammer the DB.
   RIDER_PING_MIN_INTERVAL_SEC: z.coerce.number().int().min(0).max(3600).default(10),
+  // Candidate selection (doc 08 §2): a rider is a candidate only if pinged within this window…
+  RIDER_PRESENCE_FRESHNESS_SEC: z.coerce.number().int().min(1).max(86_400).default(120),
+  // …and within this many metres of the merchant.
+  RIDER_MAX_RADIUS_M: z.coerce.number().int().min(1).max(1_000_000).default(8_000),
+  // How long an assignment offer stays open before it expires (doc 08 §2.2; ~30-45s).
+  RIDER_OFFER_TTL_SEC: z.coerce.number().int().min(5).max(3600).default(45),
+  // D15: rider earning per delivery (platform keeps the margin vs. the customer delivery fee);
+  // capped at the delivery fee so a rider never earns more than the customer paid for delivery.
+  RIDER_FEE_FLAT_CENTS: z.coerce.number().int().min(0).default(7_000),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;

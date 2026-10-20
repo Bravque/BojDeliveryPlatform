@@ -12,6 +12,11 @@ import { adminFeeRulesRouter, type FeesModule } from './routes/fees';
 import { addressesRouter, adminZonesRouter, type GeoModule } from './routes/geo';
 import { healthRouter, type HealthDeps } from './routes/health';
 import { merchantRouter } from './routes/merchant';
+import {
+  adminAssignmentsRouter,
+  riderOffersRouter,
+  type DeliveryModule,
+} from './routes/assignments';
 import { merchantOrdersRouter } from './routes/merchant-orders';
 import { ordersRouter, type OrdersModule } from './routes/orders';
 import {
@@ -53,6 +58,8 @@ export interface AppDeps {
   payments?: PaymentsModule;
   /** When provided, mounts the `/api/v1` rider onboarding + self-service endpoints. */
   riders?: RidersModule;
+  /** When provided, mounts the `/api/v1` rider assignment (offers) endpoints. */
+  delivery?: DeliveryModule;
 }
 
 /** Build the Express application. Pure factory — no network/DB side effects. */
@@ -87,7 +94,8 @@ export function createApp(deps: AppDeps): Express {
     deps.pricing ||
     deps.orders ||
     deps.payments ||
-    deps.riders
+    deps.riders ||
+    deps.delivery
   ) {
     const apiV1 = express.Router();
     if (deps.auth) {
@@ -137,6 +145,10 @@ export function createApp(deps: AppDeps): Express {
       apiV1.use(riderRouter(deps.riders.riderService, deps.riders.requireAuth));
       apiV1.use(presenceRouter(deps.riders.presenceService, deps.riders.requireAuth));
       apiV1.use(adminRiderRouter(deps.riders.riderService, deps.riders.requireAuth));
+    }
+    if (deps.delivery) {
+      apiV1.use(riderOffersRouter(deps.delivery.assignmentService, deps.delivery.requireAuth));
+      apiV1.use(adminAssignmentsRouter(deps.delivery.assignmentService, deps.delivery.requireAuth));
     }
     app.use('/api/v1', apiV1);
   }

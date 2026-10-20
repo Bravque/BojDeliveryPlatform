@@ -17,6 +17,12 @@ export interface FulfillmentView {
 
 export interface FulfillmentServiceDeps {
   withTransaction: <T>(work: (repo: OrdersRepo) => Promise<T>) => Promise<T>;
+  /**
+   * Optional hook fired (after commit) when an order reaches `ready_for_pickup`, so rider
+   * assignment can offer it. Decoupled via a callback so the orders module needn't import the
+   * delivery module; a failure here is swallowed (the order is ready — a tick re-offers).
+   */
+  onReadyForPickup?: (orderUlid: string) => Promise<void>;
 }
 
 function toView(order: OrderRecord): FulfillmentView {
@@ -37,7 +43,7 @@ function toView(order: OrderRecord): FulfillmentView {
  * (refunding a captured order) stays with the existing refund flow.
  */
 export function createFulfillmentService(deps: FulfillmentServiceDeps) {
-  const { withTransaction } = deps;
+  const { withTransaction, onReadyForPickup } = deps;
 
   function isAdmin(actor: Actor): boolean {
     return actor.roles.includes('admin') || actor.roles.includes('ops');
@@ -94,8 +100,17 @@ export function createFulfillmentService(deps: FulfillmentServiceDeps) {
     return advance(actor, orderUlid, 'preparing');
   }
 
-  function markReadyForPickup(actor: Actor, orderUlid: string): Promise<FulfillmentView> {
-    return advance(actor, orderUlid, 'ready_for_pickup');
+  async function markReadyForPickup(actor: Actor, orderUlid: string): Promise<FulfillmentView> {
+    const view = await advance(actor, orderUlid, 'ready_for_pickup');
+    // Kick rider assignment once the transition is committed (best-effort; a tick recovers).
+    if (onReadyForPickup) {
+      try {
+        await onReadyForPickup(orderUlid);
+      } catch {
+        // Swallow — the order is ready; the assignment tick will re-offer.
+      }
+    }
+    return view;
   }
 
   function rejectOrder(actor: Actor, orderUlid: string, reason: string): Promise<FulfillmentView> {
