@@ -14,6 +14,7 @@ import { healthRouter, type HealthDeps } from './routes/health';
 import { merchantRouter } from './routes/merchant';
 import {
   adminAssignmentsRouter,
+  deliveriesRouter,
   riderOffersRouter,
   type DeliveryModule,
 } from './routes/assignments';
@@ -149,6 +150,7 @@ export function createApp(deps: AppDeps): Express {
     if (deps.delivery) {
       apiV1.use(riderOffersRouter(deps.delivery.assignmentService, deps.delivery.requireAuth));
       apiV1.use(adminAssignmentsRouter(deps.delivery.assignmentService, deps.delivery.requireAuth));
+      apiV1.use(deliveriesRouter(deps.delivery.deliveryService, deps.delivery.requireAuth));
     }
     app.use('/api/v1', apiV1);
   }

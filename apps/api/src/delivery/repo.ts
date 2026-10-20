@@ -79,6 +79,46 @@ export interface DeliveryRepo {
     riderFeeCents: number;
   }): Promise<number>;
   findDeliveryByOrderId(orderId: number): Promise<DeliveryRecord | null>;
+
+  // --- delivery progression + PIN (increment 5) ---
+  findDeliveryWithOrder(orderUlid: string): Promise<DeliveryWithOrder | null>;
+  /** Lock the delivery + its order (FOR UPDATE) for a progression transition. */
+  lockDeliveryWithOrder(orderUlid: string): Promise<DeliveryWithOrder | null>;
+  setDeliveryPickedUp(deliveryId: number): Promise<void>;
+  setDeliveryDelivered(
+    deliveryId: number,
+    proofType: string,
+    proofRef: string | null,
+  ): Promise<void>;
+  upsertDeliveryPin(input: {
+    deliveryId: number;
+    pinHash: string;
+    expiresAt: Date;
+    maxAttempts: number;
+  }): Promise<void>;
+  /** Load the PIN row inside a transaction, locking it (FOR UPDATE). */
+  lockDeliveryPin(deliveryId: number): Promise<DeliveryPinRecord | null>;
+  incrementPinAttempts(deliveryId: number): Promise<void>;
+  consumeDeliveryPin(deliveryId: number): Promise<void>;
+}
+
+export interface DeliveryWithOrder {
+  deliveryId: number;
+  deliveryStatus: DeliveryStatus;
+  riderId: number | null;
+  riderFeeCents: number;
+  orderId: number;
+  orderUlid: string;
+  orderStatus: OrderStatus;
+  customerId: number;
+}
+
+export interface DeliveryPinRecord {
+  pinHash: string;
+  expiresAt: Date;
+  attempts: number;
+  maxAttempts: number;
+  consumedAt: Date | null;
 }
 
 interface OfferRowDb {
@@ -309,5 +349,133 @@ export function createKnexDeliveryRepo(exec: Knex): DeliveryRepo {
         riderFeeCents: Number(row.rider_fee_cents),
       };
     },
+
+    findDeliveryWithOrder(orderUlid) {
+      return selectDeliveryWithOrder(exec, orderUlid, false);
+    },
+
+    lockDeliveryWithOrder(orderUlid) {
+      return selectDeliveryWithOrder(exec, orderUlid, true);
+    },
+
+    async setDeliveryPickedUp(deliveryId) {
+      await exec('delivery')
+        .where({ id: deliveryId })
+        .update({ status: 'picked_up', pickup_confirmed_at: exec.raw('CURRENT_TIMESTAMP(3)') });
+    },
+
+    async setDeliveryDelivered(deliveryId, proofType, proofRef) {
+      await exec('delivery')
+        .where({ id: deliveryId })
+        .update({
+          status: 'delivered',
+          delivered_at: exec.raw('CURRENT_TIMESTAMP(3)'),
+          proof_type: proofType,
+          proof_ref: proofRef,
+        });
+    },
+
+    async upsertDeliveryPin(input) {
+      await exec('delivery_pin')
+        .insert({
+          delivery_id: input.deliveryId,
+          pin_hash: input.pinHash,
+          expires_at: input.expiresAt,
+          attempts: 0,
+          max_attempts: input.maxAttempts,
+          consumed_at: null,
+        })
+        .onConflict('delivery_id')
+        .merge({
+          pin_hash: input.pinHash,
+          expires_at: input.expiresAt,
+          attempts: 0,
+          max_attempts: input.maxAttempts,
+          consumed_at: null,
+        });
+    },
+
+    async lockDeliveryPin(deliveryId) {
+      const row = (await exec('delivery_pin')
+        .where({ delivery_id: deliveryId })
+        .forUpdate()
+        .first()) as
+        | {
+            pin_hash: string;
+            expires_at: string | Date;
+            attempts: number | string;
+            max_attempts: number | string;
+            consumed_at: string | Date | null;
+          }
+        | undefined;
+      if (!row) {
+        return null;
+      }
+      return {
+        pinHash: row.pin_hash,
+        expiresAt: new Date(row.expires_at),
+        attempts: Number(row.attempts),
+        maxAttempts: Number(row.max_attempts),
+        consumedAt: row.consumed_at === null ? null : new Date(row.consumed_at),
+      };
+    },
+
+    async incrementPinAttempts(deliveryId) {
+      await exec('delivery_pin').where({ delivery_id: deliveryId }).increment('attempts', 1);
+    },
+
+    async consumeDeliveryPin(deliveryId) {
+      await exec('delivery_pin')
+        .where({ delivery_id: deliveryId })
+        .update({ consumed_at: exec.raw('CURRENT_TIMESTAMP(3)') });
+    },
+  };
+}
+
+async function selectDeliveryWithOrder(
+  exec: Knex,
+  orderUlid: string,
+  lock: boolean,
+): Promise<DeliveryWithOrder | null> {
+  const query = exec('delivery')
+    .join('order', 'order.id', 'delivery.order_id')
+    .where('order.ulid', orderUlid)
+    .first(
+      'delivery.id as delivery_id',
+      'delivery.status as delivery_status',
+      'delivery.rider_id as rider_id',
+      'delivery.rider_fee_cents as rider_fee_cents',
+      'order.id as order_id',
+      'order.ulid as order_ulid',
+      'order.status as order_status',
+      'order.customer_id as customer_id',
+    );
+  if (lock) {
+    query.forUpdate('delivery', 'order');
+  }
+  const row = (await query) as
+    | {
+        delivery_id: number | string;
+        delivery_status: DeliveryStatus;
+        rider_id: number | string | null;
+        rider_fee_cents: number | string;
+        order_id: number | string;
+        order_ulid: string;
+        order_status: OrderStatus;
+        customer_id: number | string;
+      }
+    | undefined;
+  if (!row) {
+    return null;
+  }
+  return {
+    deliveryId: Number(row.delivery_id),
+    deliveryStatus: row.delivery_status,
+    riderId: row.rider_id === null ? null : Number(row.rider_id),
+    riderFeeCents: Number(row.rider_fee_cents),
+    orderId: Number(row.order_id),
+    orderUlid: row.order_ulid,
+    orderStatus: row.order_status,
+    customerId: Number(row.customer_id),
   };
 }
