@@ -6,8 +6,13 @@ import { newUlid } from '../auth/crypto';
 import { signAccessToken } from '../auth/tokens';
 import { createApp } from '../app';
 import { createAssignmentService } from '../delivery/assignment-service';
+import { createDeliveryService } from '../delivery/delivery-service';
 import { createKnexDeliveryRepo } from '../delivery/repo';
 import { createKnexOrdersRepo } from '../orders/repo';
+import { createAuditService } from '../auth/audit-service';
+import { createKnexAuthRepo } from '../auth/repo';
+import { createLedgerService } from '../ledger/ledger-service';
+import { createKnexLedgerRepo } from '../ledger/repo';
 import { createRequireAuth } from '../middleware/auth';
 import { buildKnexConfig, createDb } from '../platform/db';
 import { createLogger } from '../platform/logger';
@@ -51,6 +56,20 @@ describe.skipIf(!DATABASE_URL)('rider assignment integration (real MySQL)', () =
             presenceFreshnessSec: 120,
             riderFeeFlatCents: 7_000,
           },
+        }),
+        deliveryService: createDeliveryService({
+          readRepo: createKnexDeliveryRepo(db),
+          withTransaction: (work) =>
+            db.transaction((trx) =>
+              work({
+                delivery: createKnexDeliveryRepo(trx),
+                orders: createKnexOrdersRepo(trx),
+                ledger: createKnexLedgerRepo(trx),
+              }),
+            ),
+          ledgerService: createLedgerService(),
+          auditService: createAuditService(createKnexAuthRepo(db)),
+          config: { pinTtlSec: 900, pinMaxAttempts: 5 },
         }),
         requireAuth: createRequireAuth({ publicKey, issuer: ISSUER, audience: AUDIENCE }),
       },

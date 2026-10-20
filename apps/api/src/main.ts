@@ -23,6 +23,7 @@ import { createMerchantService } from './merchant/merchant-service';
 import { createKnexMerchantRepo } from './merchant/repo';
 import { createRequireAuth } from './middleware/auth';
 import { createAssignmentService } from './delivery/assignment-service';
+import { createDeliveryService } from './delivery/delivery-service';
 import { createKnexDeliveryRepo } from './delivery/repo';
 import { createFulfillmentService } from './orders/fulfillment-service';
 import { createOrderService } from './orders/order-service';
@@ -123,6 +124,8 @@ function main(): void {
     requireAuth: auth.requireAuth,
   };
 
+  const ledgerService = createLedgerService();
+
   const assignmentService = createAssignmentService({
     readRepo: createKnexDeliveryRepo(db),
     withTransaction: (work) =>
@@ -136,7 +139,24 @@ function main(): void {
       riderFeeFlatCents: env.RIDER_FEE_FLAT_CENTS,
     },
   });
-  const delivery = { assignmentService, requireAuth: auth.requireAuth };
+  const deliveryService = createDeliveryService({
+    readRepo: createKnexDeliveryRepo(db),
+    withTransaction: (work) =>
+      db.transaction((trx) =>
+        work({
+          delivery: createKnexDeliveryRepo(trx),
+          orders: createKnexOrdersRepo(trx),
+          ledger: createKnexLedgerRepo(trx),
+        }),
+      ),
+    ledgerService,
+    auditService: auth.auditService,
+    config: {
+      pinTtlSec: env.DELIVERY_PIN_TTL_SEC,
+      pinMaxAttempts: env.DELIVERY_PIN_MAX_ATTEMPTS,
+    },
+  });
+  const delivery = { assignmentService, deliveryService, requireAuth: auth.requireAuth };
 
   const orders = {
     orderService: createOrderService({
@@ -163,7 +183,6 @@ function main(): void {
     throw new Error(`PAYMENT_PROVIDER '${env.PAYMENT_PROVIDER}' is not implemented yet (Phase 8)`);
   };
   const { gateway, method: paymentMethod } = buildGateway();
-  const ledgerService = createLedgerService();
   const captureService = createCaptureService({
     readRepo: createKnexPaymentsRepo(db),
     withTransaction: (work) =>

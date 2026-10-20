@@ -22,6 +22,9 @@ const envSchema = z.object({
   // D15: rider earning per delivery (platform keeps the margin vs. the customer delivery fee);
   // capped at the delivery fee so a rider never earns more than the customer paid for delivery.
   RIDER_FEE_FLAT_CENTS: z.coerce.number().int().min(0).default(7_000),
+  // Proof-of-delivery PIN (D7): how long an issued PIN is valid, and the attempt cap before lockout.
+  DELIVERY_PIN_TTL_SEC: z.coerce.number().int().min(30).max(86_400).default(900),
+  DELIVERY_PIN_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(5),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
