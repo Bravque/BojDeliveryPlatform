@@ -28,6 +28,7 @@
     "mysql2": "catalog:",
     "pino": "catalog:",
     "pino-http": "catalog:",
+    "socket.io": "^4.8.4",
     "ulid": "catalog:",
     "zod": "catalog:"
   },
@@ -36,6 +37,7 @@
     "@types/jsonwebtoken": "catalog:",
     "@types/node": "catalog:",
     "@types/supertest": "catalog:",
+    "socket.io-client": "^4.8.4",
     "supertest": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
