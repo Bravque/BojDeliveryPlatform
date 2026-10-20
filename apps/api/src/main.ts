@@ -1,3 +1,4 @@
+import { createServer } from 'node:http';
 import { createAddressService } from './addresses/address-service';
 import { createKnexAddressRepo } from './addresses/repo';
 import { createAuditService } from './auth/audit-service';
@@ -47,6 +48,8 @@ import { createZoneService } from './zones/zone-service';
 import { loadEnv } from './env';
 import { buildKnexConfig, checkDbHealth, createDb } from './platform/db';
 import { createLogger } from './platform/logger';
+import { createKnexRealtimeResolver } from './platform/realtime/resolver';
+import { createRealtimeServer } from './platform/realtime/server';
 
 const VERSION = process.env.npm_package_version ?? '0.0.0';
 
@@ -249,8 +252,18 @@ function main(): void {
     delivery,
   });
 
-  const server = app.listen(env.PORT, () => {
-    logger.info({ port: env.PORT, env: env.NODE_ENV }, 'API listening');
+  const httpServer = createServer(app);
+  createRealtimeServer(httpServer, {
+    verifyOpts: {
+      publicKey: authConfig.JWT_PUBLIC_KEY,
+      issuer: authConfig.JWT_ISSUER,
+      audience: authConfig.JWT_AUDIENCE,
+    },
+    resolver: createKnexRealtimeResolver(db),
+    logger,
+  });
+  const server = httpServer.listen(env.PORT, () => {
+    logger.info({ port: env.PORT, env: env.NODE_ENV }, 'API listening (HTTP + realtime)');
   });
 
   const shutdown = (signal: string): void => {
