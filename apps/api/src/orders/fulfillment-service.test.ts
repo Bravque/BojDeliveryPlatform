@@ -44,8 +44,12 @@ function setup(opts: { status?: OrderStatus; staff?: string[] } = {}) {
     },
     findUserIdByUlid: () => Promise.resolve(42),
   } as unknown as OrdersRepo;
-  const svc = createFulfillmentService({ withTransaction: (work) => work(repo) });
-  return { svc, order, history };
+  const emitted: Array<{ orderUlid: string; toStatus: string }> = [];
+  const svc = createFulfillmentService({
+    withTransaction: (work) => work(repo),
+    events: { orderStatusChanged: (orderUlid, toStatus) => emitted.push({ orderUlid, toStatus }) },
+  });
+  return { svc, order, history, emitted };
 }
 
 const OWNER: Actor = { ulid: 'OWNER', roles: ['merchant_owner'] };
@@ -104,5 +108,15 @@ describe('fulfillment service', () => {
   it('404s an unknown order', async () => {
     const { svc } = setup();
     expect(await thrownStatus(svc.acceptOrder(OWNER, 'NOPE'))).toBe(404);
+  });
+
+  it('emits a realtime status change after a successful transition, not on failure', async () => {
+    const ok = setup();
+    await ok.svc.acceptOrder(OWNER, 'ORD1');
+    expect(ok.emitted).toEqual([{ orderUlid: 'ORD1', toStatus: 'merchant_accepted' }]);
+
+    const bad = setup({ status: 'placed' });
+    await thrownStatus(bad.svc.markReadyForPickup(OWNER, 'ORD1')); // illegal → throws
+    expect(bad.emitted).toEqual([]); // no emit when the transaction never committed
   });
 });

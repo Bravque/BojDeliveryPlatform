@@ -3,6 +3,7 @@ import { newUlid } from '../auth/crypto';
 import type { LedgerRepo } from '../ledger/repo';
 import type { LedgerService } from '../ledger/ledger-service';
 import { assertTransition } from '../orders/state-machine';
+import { noopPublisher, type DomainEventPublisher } from '../platform/events/publisher';
 import { buildCaptureLines, type CaptureOutcome, type StkCallback } from './capture';
 import { buildAutoRefundLines } from './refund';
 import type { PaymentsRepo } from './repo';
@@ -17,10 +18,12 @@ export interface CaptureServiceDeps {
   readRepo: PaymentsRepo;
   withTransaction: <T>(work: (repos: CaptureRepos) => Promise<T>) => Promise<T>;
   ledgerService: LedgerService;
+  /** Realtime publisher; emitted after commit (best-effort). Defaults to no-op. */
+  events?: DomainEventPublisher;
 }
 
 export function createCaptureService(deps: CaptureServiceDeps) {
-  const { readRepo, withTransaction, ledgerService } = deps;
+  const { readRepo, withTransaction, ledgerService, events = noopPublisher } = deps;
 
   /**
    * Process an STK result idempotently (doc 07 §3–4). Recording the raw event with a UNIQUE
@@ -32,7 +35,8 @@ export function createCaptureService(deps: CaptureServiceDeps) {
     callback: StkCallback,
     source: 'stk_callback' | 'status_query' | 'reconciliation' = 'stk_callback',
   ): Promise<CaptureOutcome> {
-    return withTransaction(async ({ payments, ledger }) => {
+    let emit: { ulid: string; status: string } | null = null;
+    const outcome = await withTransaction(async ({ payments, ledger }) => {
       const payment = await payments.findPaymentByCheckoutRequestId(callback.checkoutRequestId);
       const fresh = await payments.insertPaymentEventDedup({
         paymentId: payment?.id ?? null,
@@ -112,6 +116,7 @@ export function createCaptureService(deps: CaptureServiceDeps) {
           actorType: 'system',
           actorUserId: null,
         });
+        emit = { ulid: snapshot.ulid, status: 'placed' };
         return 'captured';
       }
 
@@ -129,8 +134,15 @@ export function createCaptureService(deps: CaptureServiceDeps) {
         actorType: 'system',
         actorUserId: null,
       });
+      emit = { ulid: snapshot.ulid, status: 'payment_failed' };
       return 'failed';
     });
+    // `emit` is set inside the transaction callback; the cast restores the union for CFA.
+    const pending = emit as { ulid: string; status: string } | null;
+    if (pending) {
+      events.orderStatusChanged(pending.ulid, pending.status); // after commit — best-effort
+    }
+    return outcome;
   }
 
   /**

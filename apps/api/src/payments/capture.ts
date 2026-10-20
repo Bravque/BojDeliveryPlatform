@@ -26,6 +26,7 @@ export type CaptureOutcome =
 /** The order money snapshot needed to post the capture. */
 export interface OrderMoneySnapshot {
   id: number;
+  ulid: string;
   merchantId: number;
   subtotalCents: number;
   deliveryFeeCents: number;

@@ -48,6 +48,8 @@ import { createZoneService } from './zones/zone-service';
 import { loadEnv } from './env';
 import { buildKnexConfig, checkDbHealth, createDb } from './platform/db';
 import { createLogger } from './platform/logger';
+import { createRealtimeEventPublisher } from './platform/events/publisher';
+import { createLateBoundGateway } from './platform/realtime/gateway';
 import { createKnexRealtimeResolver } from './platform/realtime/resolver';
 import { createRealtimeServer } from './platform/realtime/server';
 
@@ -129,6 +131,16 @@ function main(): void {
 
   const ledgerService = createLedgerService();
 
+  // Realtime: the gateway is bound after the Socket.IO server is created (which needs the built
+  // app); services take the late-bound gateway now via the event publisher (best-effort emits).
+  const realtimeResolver = createKnexRealtimeResolver(db);
+  const lateGateway = createLateBoundGateway();
+  const events = createRealtimeEventPublisher({
+    gateway: lateGateway.gateway,
+    resolver: realtimeResolver,
+    logger,
+  });
+
   const assignmentService = createAssignmentService({
     readRepo: createKnexDeliveryRepo(db),
     withTransaction: (work) =>
@@ -141,6 +153,7 @@ function main(): void {
       presenceFreshnessSec: env.RIDER_PRESENCE_FRESHNESS_SEC,
       riderFeeFlatCents: env.RIDER_FEE_FLAT_CENTS,
     },
+    events,
   });
   const deliveryService = createDeliveryService({
     readRepo: createKnexDeliveryRepo(db),
@@ -158,6 +171,7 @@ function main(): void {
       pinTtlSec: env.DELIVERY_PIN_TTL_SEC,
       pinMaxAttempts: env.DELIVERY_PIN_MAX_ATTEMPTS,
     },
+    events,
   });
   const delivery = { assignmentService, deliveryService, requireAuth: auth.requireAuth };
 
@@ -174,6 +188,7 @@ function main(): void {
       onReadyForPickup: async (orderUlid) => {
         await assignmentService.offerForOrder(orderUlid);
       },
+      events,
     }),
     requireAuth: auth.requireAuth,
   };
@@ -193,6 +208,7 @@ function main(): void {
         work({ payments: createKnexPaymentsRepo(trx), ledger: createKnexLedgerRepo(trx) }),
       ),
     ledgerService,
+    events,
   });
   const payments = {
     paymentService: createPaymentService({
@@ -253,15 +269,16 @@ function main(): void {
   });
 
   const httpServer = createServer(app);
-  createRealtimeServer(httpServer, {
+  const realtime = createRealtimeServer(httpServer, {
     verifyOpts: {
       publicKey: authConfig.JWT_PUBLIC_KEY,
       issuer: authConfig.JWT_ISSUER,
       audience: authConfig.JWT_AUDIENCE,
     },
-    resolver: createKnexRealtimeResolver(db),
+    resolver: realtimeResolver,
     logger,
   });
+  lateGateway.bind(realtime.gateway); // domain events now reach live sockets
   const server = httpServer.listen(env.PORT, () => {
     logger.info({ port: env.PORT, env: env.NODE_ENV }, 'API listening (HTTP + realtime)');
   });

@@ -344,6 +344,7 @@ export function createKnexPaymentsRepo(exec: Knex): PaymentsRepo {
         .where({ id: orderId })
         .first(
           'id',
+          'ulid',
           'merchant_id',
           'status',
           'subtotal_cents',
@@ -355,6 +356,7 @@ export function createKnexPaymentsRepo(exec: Knex): PaymentsRepo {
         )) as
         | {
             id: number | string;
+            ulid: string;
             merchant_id: number | string;
             status: OrderStatus;
             subtotal_cents: number | string;
@@ -370,6 +372,7 @@ export function createKnexPaymentsRepo(exec: Knex): PaymentsRepo {
       }
       return {
         id: Number(row.id),
+        ulid: row.ulid,
         merchantId: Number(row.merchant_id),
         status: row.status,
         subtotalCents: Number(row.subtotal_cents),

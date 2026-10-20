@@ -1,4 +1,5 @@
 import { conflict, notFound, unauthorized } from '../http/errors';
+import { noopPublisher, type DomainEventPublisher } from '../platform/events/publisher';
 import type { OrdersRepo } from '../orders/repo';
 import { assertTransition } from '../orders/state-machine';
 import { rankCandidates } from './candidate';
@@ -48,6 +49,8 @@ export interface AssignmentServiceDeps {
   readRepo: DeliveryRepo;
   withTransaction: <T>(work: (repos: AssignmentRepos) => Promise<T>) => Promise<T>;
   config: AssignmentConfig;
+  /** Realtime publisher; emitted after commit (best-effort). Defaults to no-op. */
+  events?: DomainEventPublisher;
 }
 
 function isDuplicateKey(err: unknown): boolean {
@@ -57,7 +60,7 @@ function isDuplicateKey(err: unknown): boolean {
 }
 
 export function createAssignmentService(deps: AssignmentServiceDeps) {
-  const { readRepo, withTransaction, config } = deps;
+  const { readRepo, withTransaction, config, events = noopPublisher } = deps;
 
   /**
    * Offer the order to the best not-yet-offered candidate (doc 08 §2). Runs in a transaction: it
@@ -120,7 +123,7 @@ export function createAssignmentService(deps: AssignmentServiceDeps) {
    * → exactly one wins; the rest get 409 `OFFER_ALREADY_TAKEN`.
    */
   async function acceptOffer(actor: Actor, offerId: number): Promise<AcceptView> {
-    return withTransaction(async ({ delivery, orders }) => {
+    const view = await withTransaction(async ({ delivery, orders }) => {
       const riderUserId = await requireRiderUserId(orders, actor);
       const peek = await delivery.findOfferById(offerId);
       if (!peek || peek.riderId !== riderUserId) {
@@ -169,8 +172,15 @@ export function createAssignmentService(deps: AssignmentServiceDeps) {
         actorUserId: riderUserId,
         reason: null,
       });
-      return { orderUlid: order.ulid, status: 'rider_assigned', deliveryId, riderFeeCents };
+      return {
+        orderUlid: order.ulid,
+        status: 'rider_assigned' as const,
+        deliveryId,
+        riderFeeCents,
+      };
     });
+    events.orderStatusChanged(view.orderUlid, 'rider_assigned'); // after commit — best-effort
+    return view;
   }
 
   /** Decline an offer and immediately offer the next candidate. */
