@@ -5,6 +5,14 @@ documents (`../01`…`../12`) are updated to match and point back here.
 
 ---
 
+## 2026-10-20 — Phase 5: rider fee model (D15)
+
+| ID | Decision | Accepted value | Notes / guardrails |
+|----|----------|----------------|--------------------|
+| **D15** | How a rider's earning is set (resolves open **D5**) | A **configurable rate**; the platform keeps the margin between the customer `delivery_fee` and the rider fee. Rider fee is capped at the delivery fee (margin ≥ 0). | Isolated in one pure function `delivery/rider-fee.ts` (`computeRiderFeeCents(deliveryFeeCents, flatRateCents)`), config `RIDER_FEE_FLAT_CENTS`. Snapshotted into `delivery.rider_fee_cents` at accept (never rewritten by later rate changes). Earnings accrue on delivery (`DR platform_delivery_income / CR rider_payable:{riderId}` for the rider fee) in Phase 5 Inc 5, leaving the platform margin in `platform_delivery_income`. Swapping to a per-zone rate or distance formula is a change in that one file only. |
+
+---
+
 ## 2026-10-19 — Phase 4: refund cost-bearer + reversal ledger split (D14)
 
 | ID | Decision | Accepted value | Notes / guardrails |

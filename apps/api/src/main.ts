@@ -22,6 +22,8 @@ import { createKnexLedgerRepo } from './ledger/repo';
 import { createMerchantService } from './merchant/merchant-service';
 import { createKnexMerchantRepo } from './merchant/repo';
 import { createRequireAuth } from './middleware/auth';
+import { createAssignmentService } from './delivery/assignment-service';
+import { createKnexDeliveryRepo } from './delivery/repo';
 import { createFulfillmentService } from './orders/fulfillment-service';
 import { createOrderService } from './orders/order-service';
 import { createKnexOrdersRepo } from './orders/repo';
@@ -121,6 +123,21 @@ function main(): void {
     requireAuth: auth.requireAuth,
   };
 
+  const assignmentService = createAssignmentService({
+    readRepo: createKnexDeliveryRepo(db),
+    withTransaction: (work) =>
+      db.transaction((trx) =>
+        work({ delivery: createKnexDeliveryRepo(trx), orders: createKnexOrdersRepo(trx) }),
+      ),
+    config: {
+      maxRadiusM: env.RIDER_MAX_RADIUS_M,
+      offerTtlSec: env.RIDER_OFFER_TTL_SEC,
+      presenceFreshnessSec: env.RIDER_PRESENCE_FRESHNESS_SEC,
+      riderFeeFlatCents: env.RIDER_FEE_FLAT_CENTS,
+    },
+  });
+  const delivery = { assignmentService, requireAuth: auth.requireAuth };
+
   const orders = {
     orderService: createOrderService({
       readRepo: createKnexOrdersRepo(db),
@@ -130,6 +147,10 @@ function main(): void {
     }),
     fulfillmentService: createFulfillmentService({
       withTransaction: (work) => db.transaction((trx) => work(createKnexOrdersRepo(trx))),
+      // When an order is marked ready, offer it to a rider (best-effort; the tick re-offers).
+      onReadyForPickup: async (orderUlid) => {
+        await assignmentService.offerForOrder(orderUlid);
+      },
     }),
     requireAuth: auth.requireAuth,
   };
@@ -206,6 +227,7 @@ function main(): void {
     orders,
     payments,
     riders,
+    delivery,
   });
 
   const server = app.listen(env.PORT, () => {
