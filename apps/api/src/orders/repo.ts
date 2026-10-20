@@ -164,6 +164,10 @@ export interface OrdersRepo {
   clearCart(cartId: number): Promise<void>;
 
   findOrderByUlid(ulid: string): Promise<OrderRecord | null>;
+  /** Load an order inside a transaction, locking the row (FOR UPDATE) — merchant/rider progression. */
+  lockOrderByUlid(ulid: string): Promise<OrderRecord | null>;
+  /** User ulids linked to a merchant (owner + staff), for the merchant-ownership gate. */
+  findMerchantStaffUlids(merchantId: number): Promise<string[]>;
   listOrdersForUser(userId: number): Promise<OrderRecord[]>;
   /** Product id + quantity per line, for releasing reserved stock on cancellation. */
   listOrderStockLines(orderId: number): Promise<Array<{ productId: number; quantity: number }>>;
@@ -519,6 +523,20 @@ export function createKnexOrdersRepo(exec: Knex): OrdersRepo {
     async findOrderByUlid(ulid) {
       const row = (await exec('order').where({ ulid }).first()) as OrderRowDb | undefined;
       return row ? mapOrder(row) : null;
+    },
+
+    async lockOrderByUlid(ulid) {
+      const row = (await exec('order').where({ ulid }).forUpdate().first()) as
+        OrderRowDb | undefined;
+      return row ? mapOrder(row) : null;
+    },
+
+    async findMerchantStaffUlids(merchantId) {
+      const rows = (await exec('merchant_user')
+        .join('user', 'user.id', 'merchant_user.user_id')
+        .where('merchant_user.merchant_id', merchantId)
+        .select('user.ulid as ulid')) as Array<{ ulid: string }>;
+      return rows.map((r) => r.ulid);
     },
 
     async listOrdersForUser(userId) {

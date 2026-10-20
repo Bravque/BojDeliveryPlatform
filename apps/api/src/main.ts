@@ -22,6 +22,7 @@ import { createKnexLedgerRepo } from './ledger/repo';
 import { createMerchantService } from './merchant/merchant-service';
 import { createKnexMerchantRepo } from './merchant/repo';
 import { createRequireAuth } from './middleware/auth';
+import { createFulfillmentService } from './orders/fulfillment-service';
 import { createOrderService } from './orders/order-service';
 import { createKnexOrdersRepo } from './orders/repo';
 import { createCaptureService } from './payments/capture-service';
@@ -126,6 +127,9 @@ function main(): void {
       withTransaction: (work) => db.transaction((trx) => work(createKnexOrdersRepo(trx))),
       zones: zoneService,
       fees: fees.feeService,
+    }),
+    fulfillmentService: createFulfillmentService({
+      withTransaction: (work) => db.transaction((trx) => work(createKnexOrdersRepo(trx))),
     }),
     requireAuth: auth.requireAuth,
   };

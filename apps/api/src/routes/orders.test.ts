@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { signAccessToken } from '../auth/tokens';
 import { createApp } from '../app';
 import { createRequireAuth } from '../middleware/auth';
+import type { FulfillmentService, FulfillmentView } from '../orders/fulfillment-service';
 import type { OrderService, OrderSummary, OrderView } from '../orders/order-service';
 import { createLogger } from '../platform/logger';
 
@@ -68,12 +69,26 @@ const orderService: OrderService = {
   listOrders: () => Promise.resolve([summary]),
 };
 
+const fulfilled = (status: string): FulfillmentView => ({
+  ulid: 'ORD1',
+  orderNumber: 'BOJ-ABCDEF12',
+  status,
+  paymentStatus: 'paid',
+});
+const fulfillmentService: FulfillmentService = {
+  acceptOrder: () => Promise.resolve(fulfilled('merchant_accepted')),
+  startPreparing: () => Promise.resolve(fulfilled('preparing')),
+  markReadyForPickup: () => Promise.resolve(fulfilled('ready_for_pickup')),
+  rejectOrder: () => Promise.resolve(fulfilled('rejected')),
+};
+
 function app() {
   return createApp({
     logger: createLogger({ level: 'silent' }),
     version: 'test',
     orders: {
       orderService,
+      fulfillmentService,
       requireAuth: createRequireAuth({ publicKey, issuer: ISSUER, audience: AUDIENCE }),
     },
   });
@@ -118,5 +133,44 @@ describe('customer orders (auth required)', () => {
       .send({ reason: 'changed my mind' });
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('cancelled');
+  });
+});
+
+describe('merchant order progression (RBAC)', () => {
+  const staffAuth = () => ({ Authorization: `Bearer ${tokenFor(['merchant_owner'])}` });
+
+  it('forbids a customer accepting (403), allows merchant staff (200)', async () => {
+    expect(
+      (await request(app()).post('/api/v1/merchant/orders/ORD1/accept').set(auth())).status,
+    ).toBe(403);
+    const ok = await request(app()).post('/api/v1/merchant/orders/ORD1/accept').set(staffAuth());
+    expect(ok.status).toBe(200);
+    expect(ok.body.status).toBe('merchant_accepted');
+  });
+
+  it('walks preparing → ready (200)', async () => {
+    const prep = await request(app())
+      .post('/api/v1/merchant/orders/ORD1/preparing')
+      .set(staffAuth());
+    expect(prep.status).toBe(200);
+    expect(prep.body.status).toBe('preparing');
+    const ready = await request(app()).post('/api/v1/merchant/orders/ORD1/ready').set(staffAuth());
+    expect(ready.status).toBe(200);
+    expect(ready.body.status).toBe('ready_for_pickup');
+  });
+
+  it('rejects an order with a reason (200), requires the reason (422)', async () => {
+    const ok = await request(app())
+      .post('/api/v1/merchant/orders/ORD1/reject')
+      .set(staffAuth())
+      .send({ reason: 'out of stock' });
+    expect(ok.status).toBe(200);
+    expect(ok.body.status).toBe('rejected');
+
+    const bad = await request(app())
+      .post('/api/v1/merchant/orders/ORD1/reject')
+      .set(staffAuth())
+      .send({});
+    expect(bad.status).toBe(422);
   });
 });

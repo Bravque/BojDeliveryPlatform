@@ -202,6 +202,12 @@ class FakeOrdersRepo implements OrdersRepo {
   findOrderByUlid(ulid: string): Promise<OrderRecord | null> {
     return Promise.resolve(this.orders.find((o) => o.ulid === ulid) ?? null);
   }
+  lockOrderByUlid(ulid: string): Promise<OrderRecord | null> {
+    return Promise.resolve(this.orders.find((o) => o.ulid === ulid) ?? null);
+  }
+  findMerchantStaffUlids(): Promise<string[]> {
+    return Promise.resolve([]);
+  }
   listOrdersForUser(userId: number): Promise<OrderRecord[]> {
     return Promise.resolve(this.orders.filter((o) => o.customerId === userId));
   }
