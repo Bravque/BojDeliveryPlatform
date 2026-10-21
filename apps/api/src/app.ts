@@ -182,7 +182,13 @@ export function createApp(deps: AppDeps): Express {
     }
     if (deps.payments) {
       apiV1.use(paymentsRouter(deps.payments.paymentService, deps.payments.requireAuth));
-      apiV1.use(stkWebhookRouter(deps.payments.captureService, deps.payments.webhookToken));
+      apiV1.use(
+        stkWebhookRouter(
+          deps.payments.captureService,
+          deps.payments.webhookToken,
+          deps.payments.webhookIpAllowlist,
+        ),
+      );
       apiV1.use(adminReconcileRouter(deps.payments.reconcileService, deps.payments.requireAuth));
       apiV1.use(refundsRouter(deps.payments.refundService, deps.payments.requireAuth));
       if (deps.payments.allowDevSimulate) {

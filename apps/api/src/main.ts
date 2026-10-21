@@ -36,6 +36,8 @@ import { createReconcileService } from './payments/reconcile-service';
 import { createRefundService } from './payments/refund-service';
 import { createKnexPaymentsRepo, type PaymentMethod } from './payments/repo';
 import { SimulatedGateway } from './payments/simulated-gateway';
+import { createDarajaClient } from './payments/daraja/client';
+import { DarajaGateway } from './payments/daraja/daraja-gateway';
 import { createKnexPricingRepo } from './pricing/repo';
 import { createQuoteService } from './pricing/quote-service';
 import { createKnexPromotionRepo } from './promotions/repo';
@@ -249,14 +251,29 @@ function main(): void {
     requireAuth: auth.requireAuth,
   };
 
-  // Only the simulated gateway is implemented until Daraja go-live (Phase 8).
+  // Simulated locally/CI; a Daraja value swaps in the real STK adapter (doc 07 §2). Daraja creds are
+  // validated as required by loadEnv when a Daraja provider is selected, so the `!` are safe here.
   const buildGateway = (): { gateway: PaymentGateway; method: PaymentMethod } => {
     if (env.PAYMENT_PROVIDER === 'simulated') {
       return { gateway: new SimulatedGateway(), method: 'simulated' };
     }
-    throw new Error(`PAYMENT_PROVIDER '${env.PAYMENT_PROVIDER}' is not implemented yet (Phase 8)`);
+    const client = createDarajaClient({
+      baseUrl: env.DARAJA_BASE_URL!,
+      consumerKey: env.DARAJA_CONSUMER_KEY!,
+      consumerSecret: env.DARAJA_CONSUMER_SECRET!,
+    });
+    const gateway = new DarajaGateway({
+      client,
+      shortcode: env.DARAJA_SHORTCODE!,
+      passkey: env.DARAJA_PASSKEY!,
+      callbackUrl: env.DARAJA_CALLBACK_URL!,
+    });
+    return { gateway, method: 'mpesa_stk' };
   };
   const { gateway, method: paymentMethod } = buildGateway();
+  const webhookIpAllowlist = env.DARAJA_WEBHOOK_IP_ALLOWLIST?.split(',')
+    .map((ip) => ip.trim())
+    .filter(Boolean);
   const captureService = createCaptureService({
     readRepo: createKnexPaymentsRepo(db),
     withTransaction: (work) =>
@@ -291,6 +308,7 @@ function main(): void {
     }),
     requireAuth: auth.requireAuth,
     webhookToken: env.MPESA_WEBHOOK_TOKEN,
+    webhookIpAllowlist,
     allowDevSimulate: env.NODE_ENV !== 'production',
   };
 
