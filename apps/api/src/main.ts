@@ -42,6 +42,9 @@ import { createKnexPromotionRepo } from './promotions/repo';
 import { createPromotionService } from './promotions/promotion-service';
 import { createSettlementService } from './settlements/settlement-service';
 import { createKnexSettlementsRepo } from './settlements/repo';
+import { createPayoutService } from './payouts/payout-service';
+import { createKnexPayoutsRepo } from './payouts/repo';
+import { SimulatedPayoutGateway } from './payouts/gateway';
 import { createPresenceService } from './riders/presence-service';
 import { createRiderService } from './riders/rider-service';
 import { createKnexRiderRepo } from './riders/repo';
@@ -168,6 +171,20 @@ function main(): void {
       auditService: auth.auditService,
     }),
     requireAuth: auth.requireAuth,
+  };
+
+  const payouts = {
+    payoutService: createPayoutService({
+      withTransaction: (work) =>
+        db.transaction((trx) =>
+          work({ payouts: createKnexPayoutsRepo(trx), ledger: createKnexLedgerRepo(trx) }),
+        ),
+      ledgerService,
+      gateway: new SimulatedPayoutGateway(),
+      auditService: auth.auditService,
+    }),
+    requireAuth: auth.requireAuth,
+    allowDevSimulate: env.NODE_ENV !== 'production',
   };
 
   const assignmentService = createAssignmentService({
@@ -297,6 +314,7 @@ function main(): void {
     delivery,
     notifications,
     settlements,
+    payouts,
   });
 
   const httpServer = createServer(app);
