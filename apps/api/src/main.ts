@@ -326,6 +326,14 @@ function main(): void {
     settlements,
     payouts,
     reports,
+    security: {
+      corsAllowedOrigins: env.CORS_ALLOWED_ORIGINS?.split(',')
+        .map((o) => o.trim())
+        .filter(Boolean),
+      trustProxy: env.TRUST_PROXY,
+      rateLimit: { windowMs: env.RATE_LIMIT_WINDOW_SEC * 1000, limit: env.RATE_LIMIT_MAX },
+      authRateLimit: { windowMs: env.RATE_LIMIT_WINDOW_SEC * 1000, limit: env.AUTH_RATE_LIMIT_MAX },
+    },
   });
 
   const httpServer = createServer(app);
