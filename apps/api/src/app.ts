@@ -32,6 +32,7 @@ import {
 } from './routes/payments';
 import { adminPromotionsRouter, type PromotionsModule } from './routes/promotions';
 import { quoteRouter, type PricingModule } from './routes/quote';
+import { settlementsRouter, type SettlementsModule } from './routes/settlements';
 import { adminRiderRouter, presenceRouter, riderRouter, type RidersModule } from './routes/riders';
 
 export interface AppDeps {
@@ -64,6 +65,8 @@ export interface AppDeps {
   delivery?: DeliveryModule;
   /** When provided, mounts the `/api/v1` device-registration endpoint. */
   notifications?: NotificationsModule;
+  /** When provided, mounts the `/api/v1/admin/settlements` endpoints. */
+  settlements?: SettlementsModule;
 }
 
 /** Build the Express application. Pure factory — no network/DB side effects. */
@@ -100,7 +103,8 @@ export function createApp(deps: AppDeps): Express {
     deps.payments ||
     deps.riders ||
     deps.delivery ||
-    deps.notifications
+    deps.notifications ||
+    deps.settlements
   ) {
     const apiV1 = express.Router();
     if (deps.auth) {
@@ -158,6 +162,11 @@ export function createApp(deps: AppDeps): Express {
     }
     if (deps.notifications) {
       apiV1.use(devicesRouter(deps.notifications.deviceService, deps.notifications.requireAuth));
+    }
+    if (deps.settlements) {
+      apiV1.use(
+        settlementsRouter(deps.settlements.settlementService, deps.settlements.requireAuth),
+      );
     }
     app.use('/api/v1', apiV1);
   }
