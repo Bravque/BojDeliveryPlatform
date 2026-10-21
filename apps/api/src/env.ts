@@ -33,11 +33,46 @@ const envSchema = z.object({
   RATE_LIMIT_WINDOW_SEC: z.coerce.number().int().min(1).max(3600).default(60),
   RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(300),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(20),
+  // Daraja (M-Pesa) credentials (Phase 8). Required only when PAYMENT_PROVIDER is a Daraja value
+  // (enforced below); unused under 'simulated'. STK = money-in (this increment).
+  DARAJA_BASE_URL: z.string().url().optional(),
+  DARAJA_CONSUMER_KEY: z.string().optional(),
+  DARAJA_CONSUMER_SECRET: z.string().optional(),
+  DARAJA_SHORTCODE: z.string().optional(),
+  DARAJA_PASSKEY: z.string().optional(),
+  DARAJA_CALLBACK_URL: z.string().url().optional(),
+  // Optional allow-list (csv of IPs) for the M-Pesa callback webhook; empty = no IP restriction.
+  DARAJA_WEBHOOK_IP_ALLOWLIST: z.string().optional(),
+});
+
+/** STK (money-in) config required once a Daraja provider is selected. */
+const DARAJA_STK_REQUIRED = [
+  'DARAJA_BASE_URL',
+  'DARAJA_CONSUMER_KEY',
+  'DARAJA_CONSUMER_SECRET',
+  'DARAJA_SHORTCODE',
+  'DARAJA_PASSKEY',
+  'DARAJA_CALLBACK_URL',
+] as const;
+
+const envSchemaChecked = envSchema.superRefine((val, ctx) => {
+  if (val.PAYMENT_PROVIDER === 'simulated') {
+    return;
+  }
+  for (const key of DARAJA_STK_REQUIRED) {
+    if (!val[key]) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [key],
+        message: `${key} is required when PAYMENT_PROVIDER=${val.PAYMENT_PROVIDER}`,
+      });
+    }
+  }
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
 
 /** Load and validate environment configuration. Throws (fail-fast) on invalid config. */
 export function loadEnv(source?: NodeJS.ProcessEnv): AppEnv {
-  return parseEnv(envSchema, source);
+  return parseEnv(envSchemaChecked, source);
 }

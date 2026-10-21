@@ -7,6 +7,7 @@ import { requirePolicy, requireRole } from '../middleware/rbac';
 import type { Actor, PaymentService } from '../payments/payment-service';
 import type { ReconcileService } from '../payments/reconcile-service';
 import type { RefundService } from '../payments/refund-service';
+import { isDarajaStkCallback, mapDarajaStkCallback } from '../payments/daraja/callback';
 
 /** Payment dependencies for the app factory. */
 export interface PaymentsModule {
@@ -17,6 +18,8 @@ export interface PaymentsModule {
   requireAuth: RequestHandler;
   /** Shared secret the STK callback must present; when undefined the webhook rejects all. */
   webhookToken: string | undefined;
+  /** Optional IP allow-list for the STK callback webhook; empty/undefined = no IP restriction. */
+  webhookIpAllowlist?: string[];
   /** Whether to mount the non-production dev simulate endpoint (NODE_ENV !== 'production'). */
   allowDevSimulate: boolean;
 }
@@ -92,23 +95,34 @@ const callbackSchema = z.object({
 });
 
 /**
- * STK callback webhook (doc 07 §3) — no user auth; authenticated by a shared `X-Webhook-Token`.
- * Always acks 200 for a recognised request (duplicate / unknown / mismatch included) so the
- * provider does not retry forever; capture decisions live in the service.
+ * STK callback webhook (doc 07 §3) — no user auth; hardened by (1) an optional source-IP allow-list
+ * and (2) a shared `X-Webhook-Token`. Accepts either the raw Daraja nested JSON (production) or our
+ * normalised shape (tests/dev). Always acks 200 for a recognised request (duplicate / unknown /
+ * mismatch included) so the provider does not retry forever; capture decisions live in the service.
  */
 export function stkWebhookRouter(
   captureService: CaptureService,
   webhookToken: string | undefined,
+  webhookIpAllowlist?: string[],
 ): Router {
   const router = express.Router();
 
   router.post(
     '/webhooks/mpesa/stk',
     asyncHandler(async (req, res) => {
+      if (
+        webhookIpAllowlist &&
+        webhookIpAllowlist.length > 0 &&
+        !webhookIpAllowlist.includes(req.ip ?? '')
+      ) {
+        throw forbidden('Source IP not allow-listed');
+      }
       if (!webhookToken || req.get('X-Webhook-Token') !== webhookToken) {
         throw forbidden('Invalid webhook token');
       }
-      const callback = callbackSchema.parse(req.body);
+      const callback = isDarajaStkCallback(req.body)
+        ? mapDarajaStkCallback(req.body)
+        : callbackSchema.parse(req.body);
       const outcome = await captureService.processStkResult(callback);
       res.status(200).json({ status: outcome });
     }),

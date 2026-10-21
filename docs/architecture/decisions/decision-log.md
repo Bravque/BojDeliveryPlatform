@@ -5,6 +5,14 @@ documents (`../01`…`../12`) are updated to match and point back here.
 
 ---
 
+## 2026-10-21 — Phase 8: Daraja go-live approach + callback hardening (D17)
+
+| ID | Decision | Accepted value | Notes / guardrails |
+|----|----------|----------------|--------------------|
+| **D17** | How the real Daraja (M-Pesa) integration is built and cut over, and how its callbacks are trusted | The Daraja adapters (`DarajaGateway` STK now, `DarajaPayoutGateway` B2C + reversal next) live **entirely behind** the existing `PaymentGateway`/`PayoutGateway` interfaces and are selected by `PAYMENT_PROVIDER=daraja_sandbox\|daraja_prod`; **switching providers changes nothing outside the adapter folder**. They are built and tested against a **local fake-Daraja HTTP server** (no new HTTP-client dependency — Node 20 global `fetch`); the **live cutover is a deploy-time credentials + `PAYMENT_PROVIDER` flip** the operator performs (this sandbox has no Safaricom creds). Callbacks are treated as **hints, not trusted**: the STK webhook is hardened with an optional **source-IP allow-list** + the shared `X-Webhook-Token`, raw events are persisted + de-duplicated, and capture is confirmed by **amount match** (+ an independent `queryStkStatus` for high value). | Honors doc 07 §2 ("switching `PAYMENT_PROVIDER` requires no changes outside the adapter") and the Phase-8 acceptance. **Amounts:** M-Pesa `Amount` is whole **KES shillings**; the ledger is integer **cents** — the adapter converts cents→shillings and **rejects non-whole-shilling amounts** (should never occur for KES pricing). **STK Query limitation:** the STK Push Query API returns status only (no amount/receipt), so a query-confirmed success with no callback stays **unverified** (`amountCents=null` → the capture service quarantines rather than capturing an unverified sum). OAuth tokens are cached until just before expiry. Daraja does not sign callbacks, hence the IP allow-list + token + amount-verify defense-in-depth. Real-sandbox end-to-end, load, and go-live steps are **operator-run** (not reproducible in this sandbox). |
+
+---
+
 ## 2026-10-21 — Phase 7: settlement/payout cadence + payout rail (D16)
 
 | ID | Decision | Accepted value | Notes / guardrails |
