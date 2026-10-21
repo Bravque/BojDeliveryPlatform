@@ -45,6 +45,8 @@ import { createKnexSettlementsRepo } from './settlements/repo';
 import { createPayoutService } from './payouts/payout-service';
 import { createKnexPayoutsRepo } from './payouts/repo';
 import { SimulatedPayoutGateway } from './payouts/gateway';
+import { createReportService } from './reports/report-service';
+import { createKnexReportsRepo } from './reports/repo';
 import { createPresenceService } from './riders/presence-service';
 import { createRiderService } from './riders/rider-service';
 import { createKnexRiderRepo } from './riders/repo';
@@ -187,6 +189,14 @@ function main(): void {
     allowDevSimulate: env.NODE_ENV !== 'production',
   };
 
+  const reports = {
+    reportService: createReportService({
+      reportsRepo: createKnexReportsRepo(db),
+      ledgerReadRepo: createKnexLedgerRepo(db),
+    }),
+    requireAuth: auth.requireAuth,
+  };
+
   const assignmentService = createAssignmentService({
     readRepo: createKnexDeliveryRepo(db),
     withTransaction: (work) =>
@@ -315,6 +325,7 @@ function main(): void {
     notifications,
     settlements,
     payouts,
+    reports,
   });
 
   const httpServer = createServer(app);

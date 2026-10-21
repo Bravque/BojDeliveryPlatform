@@ -32,6 +32,7 @@ import {
 } from './routes/payments';
 import { adminPromotionsRouter, type PromotionsModule } from './routes/promotions';
 import { quoteRouter, type PricingModule } from './routes/quote';
+import { reportsRouter, type ReportsModule } from './routes/reports';
 import { devPayoutsRouter, payoutsRouter, type PayoutsModule } from './routes/payouts';
 import { settlementsRouter, type SettlementsModule } from './routes/settlements';
 import { adminRiderRouter, presenceRouter, riderRouter, type RidersModule } from './routes/riders';
@@ -70,6 +71,8 @@ export interface AppDeps {
   settlements?: SettlementsModule;
   /** When provided, mounts the `/api/v1/admin/payouts` endpoints. */
   payouts?: PayoutsModule;
+  /** When provided, mounts the read-only `/api/v1/admin/reports` endpoints. */
+  reports?: ReportsModule;
 }
 
 /** Build the Express application. Pure factory — no network/DB side effects. */
@@ -108,7 +111,8 @@ export function createApp(deps: AppDeps): Express {
     deps.delivery ||
     deps.notifications ||
     deps.settlements ||
-    deps.payouts
+    deps.payouts ||
+    deps.reports
   ) {
     const apiV1 = express.Router();
     if (deps.auth) {
@@ -177,6 +181,9 @@ export function createApp(deps: AppDeps): Express {
       if (deps.payouts.allowDevSimulate) {
         apiV1.use(devPayoutsRouter(deps.payouts.payoutService, deps.payouts.requireAuth));
       }
+    }
+    if (deps.reports) {
+      apiV1.use(reportsRouter(deps.reports.reportService, deps.reports.requireAuth));
     }
     app.use('/api/v1', apiV1);
   }
