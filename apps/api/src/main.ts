@@ -48,7 +48,11 @@ import { createZoneService } from './zones/zone-service';
 import { loadEnv } from './env';
 import { buildKnexConfig, checkDbHealth, createDb } from './platform/db';
 import { createLogger } from './platform/logger';
-import { createRealtimeEventPublisher } from './platform/events/publisher';
+import { combinePublishers, createRealtimeEventPublisher } from './platform/events/publisher';
+import { createDeviceService } from './notifications/device-service';
+import { createNotificationDispatcher } from './notifications/dispatcher';
+import { MockPushProvider } from './notifications/mock-push';
+import { createKnexNotificationsRepo } from './notifications/repo';
 import { createLateBoundGateway } from './platform/realtime/gateway';
 import { createKnexRealtimeResolver } from './platform/realtime/resolver';
 import { createRealtimeServer } from './platform/realtime/server';
@@ -135,11 +139,26 @@ function main(): void {
   // app); services take the late-bound gateway now via the event publisher (best-effort emits).
   const realtimeResolver = createKnexRealtimeResolver(db);
   const lateGateway = createLateBoundGateway();
-  const events = createRealtimeEventPublisher({
-    gateway: lateGateway.gateway,
-    resolver: realtimeResolver,
+  const notificationsRepo = createKnexNotificationsRepo(db);
+  const notificationDispatcher = createNotificationDispatcher({
+    repo: notificationsRepo,
+    push: new MockPushProvider({ logger, logBody: env.NODE_ENV !== 'production' }),
+    sms,
     logger,
   });
+  // Domain events fan out to both realtime (sockets) and notifications (push/SMS), best-effort.
+  const events = combinePublishers(
+    createRealtimeEventPublisher({
+      gateway: lateGateway.gateway,
+      resolver: realtimeResolver,
+      logger,
+    }),
+    notificationDispatcher,
+  );
+  const notifications = {
+    deviceService: createDeviceService({ repo: notificationsRepo }),
+    requireAuth: auth.requireAuth,
+  };
 
   const assignmentService = createAssignmentService({
     readRepo: createKnexDeliveryRepo(db),
@@ -266,6 +285,7 @@ function main(): void {
     payments,
     riders,
     delivery,
+    notifications,
   });
 
   const httpServer = createServer(app);
