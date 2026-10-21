@@ -1,4 +1,5 @@
 import { forbidden, notFound } from '../http/errors';
+import { noopPublisher, type DomainEventPublisher } from '../platform/events/publisher';
 import type { OrderRecord, OrdersRepo } from './repo';
 import { assertTransition, type ActorType, type OrderStatus } from './state-machine';
 
@@ -23,6 +24,8 @@ export interface FulfillmentServiceDeps {
    * delivery module; a failure here is swallowed (the order is ready — a tick re-offers).
    */
   onReadyForPickup?: (orderUlid: string) => Promise<void>;
+  /** Realtime publisher; emitted after commit (best-effort). Defaults to no-op. */
+  events?: DomainEventPublisher;
 }
 
 function toView(order: OrderRecord): FulfillmentView {
@@ -43,7 +46,7 @@ function toView(order: OrderRecord): FulfillmentView {
  * (refunding a captured order) stays with the existing refund flow.
  */
 export function createFulfillmentService(deps: FulfillmentServiceDeps) {
-  const { withTransaction, onReadyForPickup } = deps;
+  const { withTransaction, onReadyForPickup, events = noopPublisher } = deps;
 
   function isAdmin(actor: Actor): boolean {
     return actor.roles.includes('admin') || actor.roles.includes('ops');
@@ -69,7 +72,7 @@ export function createFulfillmentService(deps: FulfillmentServiceDeps) {
     to: OrderStatus,
     reason: string | null = null,
   ): Promise<FulfillmentView> {
-    return withTransaction(async (repo) => {
+    const view = await withTransaction(async (repo) => {
       const order = await repo.lockOrderByUlid(orderUlid);
       if (!order) {
         throw notFound('Order not found');
@@ -90,6 +93,8 @@ export function createFulfillmentService(deps: FulfillmentServiceDeps) {
       });
       return toView({ ...order, status: to });
     });
+    events.orderStatusChanged(orderUlid, to); // after commit — best-effort
+    return view;
   }
 
   function acceptOrder(actor: Actor, orderUlid: string): Promise<FulfillmentView> {

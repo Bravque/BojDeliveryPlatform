@@ -2,6 +2,7 @@ import type { AuditService } from '../auth/audit-service';
 import { conflict, forbidden, notFound, unauthorized } from '../http/errors';
 import type { LedgerRepo } from '../ledger/repo';
 import type { LedgerService } from '../ledger/ledger-service';
+import { noopPublisher, type DomainEventPublisher } from '../platform/events/publisher';
 import type { OrdersRepo } from '../orders/repo';
 import { assertTransition, type ActorType } from '../orders/state-machine';
 import { buildRiderEarningsLines } from './earnings';
@@ -33,6 +34,8 @@ export interface DeliveryServiceDeps {
   ledgerService: LedgerService;
   auditService: AuditService;
   config: { pinTtlSec: number; pinMaxAttempts: number };
+  /** Realtime publisher; emitted after commit (best-effort). Defaults to no-op. */
+  events?: DomainEventPublisher;
 }
 
 function toView(dwo: DeliveryWithOrder, over: Partial<DeliveryView> = {}): DeliveryView {
@@ -46,7 +49,14 @@ function toView(dwo: DeliveryWithOrder, over: Partial<DeliveryView> = {}): Deliv
 }
 
 export function createDeliveryService(deps: DeliveryServiceDeps) {
-  const { readRepo, withTransaction, ledgerService, auditService, config } = deps;
+  const {
+    readRepo,
+    withTransaction,
+    ledgerService,
+    auditService,
+    config,
+    events = noopPublisher,
+  } = deps;
 
   async function requireUserId(repo: OrdersRepo, actor: Actor): Promise<number> {
     const userId = await repo.findUserIdByUlid(actor.ulid);
@@ -81,7 +91,7 @@ export function createDeliveryService(deps: DeliveryServiceDeps) {
 
   /** Rider confirms pickup at the merchant: order `rider_assigned → picked_up`. */
   async function confirmPickup(actor: Actor, orderUlid: string): Promise<DeliveryView> {
-    return withTransaction(async ({ delivery, orders }) => {
+    const view = await withTransaction(async ({ delivery, orders }) => {
       const riderUserId = await requireUserId(orders, actor);
       const dwo = await delivery.lockDeliveryWithOrder(orderUlid);
       if (!dwo || dwo.riderId !== riderUserId) {
@@ -100,11 +110,13 @@ export function createDeliveryService(deps: DeliveryServiceDeps) {
       });
       return toView(dwo, { orderStatus: 'picked_up', deliveryStatus: 'picked_up' });
     });
+    events.orderStatusChanged(orderUlid, 'picked_up'); // after commit — best-effort
+    return view;
   }
 
   /** Rider starts the trip: order `picked_up → out_for_delivery`. */
   async function startDelivery(actor: Actor, orderUlid: string): Promise<DeliveryView> {
-    return withTransaction(async ({ delivery, orders }) => {
+    const view = await withTransaction(async ({ delivery, orders }) => {
       const riderUserId = await requireUserId(orders, actor);
       const dwo = await delivery.lockDeliveryWithOrder(orderUlid);
       if (!dwo || dwo.riderId !== riderUserId) {
@@ -122,6 +134,8 @@ export function createDeliveryService(deps: DeliveryServiceDeps) {
       });
       return toView(dwo, { orderStatus: 'out_for_delivery' });
     });
+    events.orderStatusChanged(orderUlid, 'out_for_delivery'); // after commit — best-effort
+    return view;
   }
 
   /**
@@ -158,7 +172,7 @@ export function createDeliveryService(deps: DeliveryServiceDeps) {
     orderUlid: string,
     pin: string,
   ): Promise<DeliveryView> {
-    return withTransaction(async ({ delivery, orders, ledger }) => {
+    const view = await withTransaction(async ({ delivery, orders, ledger }) => {
       const riderUserId = await requireUserId(orders, actor);
       const dwo = await delivery.lockDeliveryWithOrder(orderUlid);
       if (!dwo || dwo.riderId !== riderUserId) {
@@ -186,6 +200,8 @@ export function createDeliveryService(deps: DeliveryServiceDeps) {
       await finishDelivered(ledger, orders, dwo, 'rider', riderUserId);
       return toView(dwo, { orderStatus: 'delivered', deliveryStatus: 'delivered' });
     });
+    events.orderStatusChanged(orderUlid, 'delivered'); // after commit — best-effort
+    return view;
   }
 
   /** Admin override for a legitimate PIN failure (audited): complete without a PIN (doc 07 D7). */
@@ -197,7 +213,7 @@ export function createDeliveryService(deps: DeliveryServiceDeps) {
     if (!isAdmin(actor)) {
       throw forbidden();
     }
-    return withTransaction(async ({ delivery, orders, ledger }) => {
+    const view = await withTransaction(async ({ delivery, orders, ledger }) => {
       const adminUserId = await orders.findUserIdByUlid(actor.ulid);
       const dwo = await delivery.lockDeliveryWithOrder(orderUlid);
       if (!dwo) {
@@ -217,6 +233,8 @@ export function createDeliveryService(deps: DeliveryServiceDeps) {
       });
       return toView(dwo, { orderStatus: 'delivered', deliveryStatus: 'delivered' });
     });
+    events.orderStatusChanged(orderUlid, 'delivered'); // after commit — best-effort
+    return view;
   }
 
   /** Shared tail: move the order to `delivered`, record history, accrue rider earnings. */

@@ -74,6 +74,7 @@ class FakeCapturePaymentsRepo implements PaymentsRepo {
   };
   snapshot = {
     id: 10,
+    ulid: 'ORDER-ULID',
     merchantId: 5,
     status: 'payment_pending' as OrderStatus,
     subtotalCents: 30_200,
