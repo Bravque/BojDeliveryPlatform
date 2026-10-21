@@ -4,16 +4,20 @@ import { verifyAccessToken, type VerifyAccessTokenOptions } from '../../auth/tok
 import type { Logger } from '../logger';
 import { authorizeJoin, type RealtimePrincipal, type RealtimeResolver } from './authorize';
 import { createSocketGateway, type RealtimeGateway } from './gateway';
+import { attachScaleAdapter } from './scale-adapter';
 
 /**
  * Attach a Socket.IO server to the HTTP server (doc 02 §4). The handshake authenticates the JWT
  * (same RS256 verification as REST); `join`/`leave` are authorized per room with the same RBAC.
- * Single in-memory instance for now — the Redis adapter for horizontal scale is deferred (Phase 8).
+ * Single in-memory instance unless `redisUrl` is set, in which case the Redis adapter fans events
+ * out across instances (Phase 8).
  */
 export interface RealtimeServerDeps {
   verifyOpts: VerifyAccessTokenOptions;
   resolver: RealtimeResolver;
   logger: Logger;
+  /** When set, attach the Redis adapter for multi-instance fan-out. */
+  redisUrl?: string;
 }
 
 export interface Ack {
@@ -37,6 +41,7 @@ export function createRealtimeServer(
 ): RealtimeServer {
   const { verifyOpts, resolver, logger } = deps;
   const io = new Server(httpServer, { serveClient: false });
+  attachScaleAdapter(io, deps.redisUrl, logger);
 
   // Handshake auth: the client passes its access token in `auth.token`.
   io.use((socket, next) => {

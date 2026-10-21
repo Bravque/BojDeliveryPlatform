@@ -5,6 +5,14 @@ documents (`../01`…`../12`) are updated to match and point back here.
 
 ---
 
+## 2026-10-21 — Phase 8: background jobs + horizontal-scale readiness (D18)
+
+| ID | Decision | Accepted value | Notes / guardrails |
+|----|----------|----------------|--------------------|
+| **D18** | How scheduled background jobs run, and how realtime scales across instances | An **in-process interval scheduler** (`platform/scheduler`) gated by `SCHEDULER_ENABLED`, running on **exactly one instance**, drives the two previously on-demand jobs: the stale-payment **reconcile sweep** (`reconcileStalePayments`) and the assignment-offer **expiry tick** (`assignmentService.tick`). Realtime uses the **Socket.IO Redis adapter only when `REDIS_URL` is set** (`attachScaleAdapter`), otherwise a single in-memory instance. No new infrastructure is required to run or test. | A durable, multi-instance queue (BullMQ) stays **deferred to an actual multi-instance deployment** — consistent with Phases 4–7 keeping generation/reconcile/ticks operator- or tick-driven. Every scheduled operation is **idempotent** (reconcile/confirm/tick are no-ops when already settled), so a missed, duplicated, or double-instance run cannot double-pay or double-capture; the single-instance rule only avoids wasted work. A failing job run is **logged and swallowed** so one bad tick never kills the loop. Timer functions are injectable, so cadence is unit-tested without real time. The Redis-attached branch is exercised at deploy time (real Redis), not in CI; the no-Redis branch is unit-tested. |
+
+---
+
 ## 2026-10-21 — Phase 8: Daraja go-live approach + callback hardening (D17)
 
 | ID | Decision | Accepted value | Notes / guardrails |
