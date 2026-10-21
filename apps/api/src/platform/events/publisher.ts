@@ -15,6 +15,17 @@ export const noopPublisher: DomainEventPublisher = {
   orderStatusChanged() {},
 };
 
+/** Fan a domain event out to several publishers (e.g. realtime + notifications). */
+export function combinePublishers(...publishers: DomainEventPublisher[]): DomainEventPublisher {
+  return {
+    orderStatusChanged(orderUlid, toStatus) {
+      for (const p of publishers) {
+        p.orderStatusChanged(orderUlid, toStatus);
+      }
+    },
+  };
+}
+
 export interface RealtimeEventPublisherDeps {
   gateway: RealtimeGateway;
   resolver: Pick<RealtimeResolver, 'orderParticipants'>;

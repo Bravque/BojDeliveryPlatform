@@ -18,6 +18,7 @@ import {
   riderOffersRouter,
   type DeliveryModule,
 } from './routes/assignments';
+import { devicesRouter, type NotificationsModule } from './routes/devices';
 import { merchantOrdersRouter } from './routes/merchant-orders';
 import { ordersRouter, type OrdersModule } from './routes/orders';
 import {
@@ -61,6 +62,8 @@ export interface AppDeps {
   riders?: RidersModule;
   /** When provided, mounts the `/api/v1` rider assignment (offers) endpoints. */
   delivery?: DeliveryModule;
+  /** When provided, mounts the `/api/v1` device-registration endpoint. */
+  notifications?: NotificationsModule;
 }
 
 /** Build the Express application. Pure factory — no network/DB side effects. */
@@ -96,7 +99,8 @@ export function createApp(deps: AppDeps): Express {
     deps.orders ||
     deps.payments ||
     deps.riders ||
-    deps.delivery
+    deps.delivery ||
+    deps.notifications
   ) {
     const apiV1 = express.Router();
     if (deps.auth) {
@@ -151,6 +155,9 @@ export function createApp(deps: AppDeps): Express {
       apiV1.use(riderOffersRouter(deps.delivery.assignmentService, deps.delivery.requireAuth));
       apiV1.use(adminAssignmentsRouter(deps.delivery.assignmentService, deps.delivery.requireAuth));
       apiV1.use(deliveriesRouter(deps.delivery.deliveryService, deps.delivery.requireAuth));
+    }
+    if (deps.notifications) {
+      apiV1.use(devicesRouter(deps.notifications.deviceService, deps.notifications.requireAuth));
     }
     app.use('/api/v1', apiV1);
   }

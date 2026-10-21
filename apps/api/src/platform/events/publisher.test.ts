@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { createLogger } from '../logger';
 import type { RealtimeGateway } from '../realtime/gateway';
 import type { RealtimeResolver } from '../realtime/authorize';
-import { createRealtimeEventPublisher } from './publisher';
+import {
+  combinePublishers,
+  createRealtimeEventPublisher,
+  type DomainEventPublisher,
+} from './publisher';
 
 interface Captured {
   ulid: string;
@@ -90,5 +94,15 @@ describe('createRealtimeEventPublisher', () => {
     await flush();
     expect(spy.order).toHaveLength(1); // order room still gets status.changed
     expect(spy.merchant).toHaveLength(0);
+  });
+});
+
+describe('combinePublishers', () => {
+  it('fans an event out to every publisher', () => {
+    const calls: string[] = [];
+    const a: DomainEventPublisher = { orderStatusChanged: () => calls.push('a') };
+    const b: DomainEventPublisher = { orderStatusChanged: () => calls.push('b') };
+    combinePublishers(a, b).orderStatusChanged('ORD1', 'placed');
+    expect(calls).toEqual(['a', 'b']);
   });
 });
