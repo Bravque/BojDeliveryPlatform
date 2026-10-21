@@ -40,6 +40,8 @@ import { createKnexPricingRepo } from './pricing/repo';
 import { createQuoteService } from './pricing/quote-service';
 import { createKnexPromotionRepo } from './promotions/repo';
 import { createPromotionService } from './promotions/promotion-service';
+import { createSettlementService } from './settlements/settlement-service';
+import { createKnexSettlementsRepo } from './settlements/repo';
 import { createPresenceService } from './riders/presence-service';
 import { createRiderService } from './riders/rider-service';
 import { createKnexRiderRepo } from './riders/repo';
@@ -157,6 +159,14 @@ function main(): void {
   );
   const notifications = {
     deviceService: createDeviceService({ repo: notificationsRepo }),
+    requireAuth: auth.requireAuth,
+  };
+
+  const settlements = {
+    settlementService: createSettlementService({
+      withTransaction: (work) => db.transaction((trx) => work(createKnexSettlementsRepo(trx))),
+      auditService: auth.auditService,
+    }),
     requireAuth: auth.requireAuth,
   };
 
@@ -286,6 +296,7 @@ function main(): void {
     riders,
     delivery,
     notifications,
+    settlements,
   });
 
   const httpServer = createServer(app);

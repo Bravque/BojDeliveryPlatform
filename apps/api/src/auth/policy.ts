@@ -22,6 +22,8 @@ export type Action =
   | 'catalogue:write'
   | 'delivery:act'
   | 'refund:approve'
+  | 'settlement:approve'
+  | 'payout:approve'
   | 'audit:read'
   | 'config:write';
 
@@ -68,6 +70,8 @@ const RULES: Record<Action, PolicyRule> = {
     owns: (p, r) => r.assignedRiderUlid === p.ulid,
   },
   'refund:approve': { allowAny: ['admin', 'finance'] },
+  'settlement:approve': { allowAny: ['admin', 'finance'] },
+  'payout:approve': { allowAny: ['admin', 'finance'] },
   'audit:read': { allowAny: ['admin', 'ops', 'finance'] },
   'config:write': { allowAny: ['admin'] },
 };
