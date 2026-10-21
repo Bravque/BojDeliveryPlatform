@@ -168,6 +168,12 @@ export interface OrdersRepo {
   lockOrderByUlid(ulid: string): Promise<OrderRecord | null>;
   /** User ulids linked to a merchant (owner + staff), for the merchant-ownership gate. */
   findMerchantStaffUlids(merchantId: number): Promise<string[]>;
+  /** The merchant a staff user belongs to (first match), for the merchant dashboard. */
+  findMerchantForStaff(
+    userUlid: string,
+  ): Promise<{ id: number; ulid: string; name: string } | null>;
+  /** All orders for a merchant, newest first (merchant dashboard list). */
+  listMerchantOrders(merchantId: number): Promise<OrderRecord[]>;
   listOrdersForUser(userId: number): Promise<OrderRecord[]>;
   /** Product id + quantity per line, for releasing reserved stock on cancellation. */
   listOrderStockLines(orderId: number): Promise<Array<{ productId: number; quantity: number }>>;
@@ -537,6 +543,24 @@ export function createKnexOrdersRepo(exec: Knex): OrdersRepo {
         .where('merchant_user.merchant_id', merchantId)
         .select('user.ulid as ulid')) as Array<{ ulid: string }>;
       return rows.map((r) => r.ulid);
+    },
+
+    async findMerchantForStaff(userUlid) {
+      const row = (await exec('merchant_user')
+        .join('user', 'user.id', 'merchant_user.user_id')
+        .join('merchant', 'merchant.id', 'merchant_user.merchant_id')
+        .where('user.ulid', userUlid)
+        .orderBy('merchant.id', 'asc')
+        .first('merchant.id as id', 'merchant.ulid as ulid', 'merchant.name as name')) as
+        { id: number | string; ulid: string; name: string } | undefined;
+      return row ? { id: Number(row.id), ulid: row.ulid, name: row.name } : null;
+    },
+
+    async listMerchantOrders(merchantId) {
+      const rows = (await exec('order')
+        .where({ merchant_id: merchantId })
+        .orderBy('id', 'desc')) as OrderRowDb[];
+      return rows.map(mapOrder);
     },
 
     async listOrdersForUser(userId) {

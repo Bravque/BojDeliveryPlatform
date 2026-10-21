@@ -208,6 +208,12 @@ class FakeOrdersRepo implements OrdersRepo {
   findMerchantStaffUlids(): Promise<string[]> {
     return Promise.resolve([]);
   }
+  findMerchantForStaff(): Promise<{ id: number; ulid: string; name: string } | null> {
+    return Promise.resolve(null);
+  }
+  listMerchantOrders(): Promise<OrderRecord[]> {
+    return Promise.resolve([]);
+  }
   listOrdersForUser(userId: number): Promise<OrderRecord[]> {
     return Promise.resolve(this.orders.filter((o) => o.customerId === userId));
   }

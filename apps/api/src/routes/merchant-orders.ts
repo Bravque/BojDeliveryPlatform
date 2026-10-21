@@ -26,6 +26,14 @@ export function merchantOrdersRouter(
     requireRole('merchant_owner', 'merchant_staff', 'admin', 'ops'),
   ];
 
+  router.get(
+    '/merchant/orders',
+    ...staffOnly,
+    asyncHandler(async (req, res) => {
+      res.status(200).json(await fulfillmentService.listMerchantOrders(actorOf(req)));
+    }),
+  );
+
   router.post(
     '/merchant/orders/:ulid/accept',
     ...staffOnly,

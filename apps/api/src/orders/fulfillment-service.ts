@@ -16,6 +16,20 @@ export interface FulfillmentView {
   paymentStatus: string;
 }
 
+export interface MerchantOrderSummary {
+  ulid: string;
+  orderNumber: string;
+  status: string;
+  paymentStatus: string;
+  totalCents: number;
+  createdAt: string;
+}
+
+export interface MerchantOrdersView {
+  merchant: { ulid: string; name: string };
+  orders: MerchantOrderSummary[];
+}
+
 export interface FulfillmentServiceDeps {
   withTransaction: <T>(work: (repo: OrdersRepo) => Promise<T>) => Promise<T>;
   /**
@@ -122,7 +136,29 @@ export function createFulfillmentService(deps: FulfillmentServiceDeps) {
     return advance(actor, orderUlid, 'rejected', reason);
   }
 
-  return { acceptOrder, startPreparing, markReadyForPickup, rejectOrder };
+  /** The merchant dashboard list: the caller's merchant + its orders (newest first). */
+  async function listMerchantOrders(actor: Actor): Promise<MerchantOrdersView> {
+    return withTransaction(async (repo) => {
+      const merchant = await repo.findMerchantForStaff(actor.ulid);
+      if (!merchant) {
+        throw notFound('No merchant is associated with this account');
+      }
+      const orders = await repo.listMerchantOrders(merchant.id);
+      return {
+        merchant: { ulid: merchant.ulid, name: merchant.name },
+        orders: orders.map((o) => ({
+          ulid: o.ulid,
+          orderNumber: o.orderNumber,
+          status: o.status,
+          paymentStatus: o.paymentStatus,
+          totalCents: o.totalCents,
+          createdAt: o.createdAt.toISOString(),
+        })),
+      };
+    });
+  }
+
+  return { acceptOrder, startPreparing, markReadyForPickup, rejectOrder, listMerchantOrders };
 }
 
 export type FulfillmentService = ReturnType<typeof createFulfillmentService>;

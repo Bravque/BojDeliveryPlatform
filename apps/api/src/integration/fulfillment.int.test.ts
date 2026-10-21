@@ -171,6 +171,14 @@ describe.skipIf(!DATABASE_URL)('merchant order progression integration (real MyS
     )}`,
   });
 
+  it('lists the merchant dashboard orders for its staff', async () => {
+    const orderUlid = await placedOrder();
+    const res = await request(app).get('/api/v1/merchant/orders').set(ownerAuth());
+    expect(res.status).toBe(200);
+    expect(res.body.merchant.name).toBe('Joe Kitchen');
+    expect(res.body.orders.map((o: { ulid: string }) => o.ulid)).toContain(orderUlid);
+  });
+
   it('accept → preparing → ready records history and lands on ready_for_pickup', async () => {
     const orderUlid = await placedOrder();
 
