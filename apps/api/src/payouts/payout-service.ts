@@ -217,11 +217,13 @@ export function createPayoutService(deps: PayoutServiceDeps) {
       if (payout.status !== 'approved') {
         throw conflict('PAYOUT_NOT_APPROVED', `Payout is ${payout.status}, not approved`);
       }
+      const payeePhone = await payouts.getPayeeMsisdn(payout.payeeType, payout.payeeId);
       const { externalRef } = await gateway.initiateB2c({
         payeeType: payout.payeeType,
         payeeId: payout.payeeId,
         amountCents: payout.amountCents,
         reference: payout.ulid,
+        payeePhone,
       });
       await payouts.setPayoutProcessing(payout.id, externalRef);
       await auditService.record({
@@ -238,36 +240,74 @@ export function createPayoutService(deps: PayoutServiceDeps) {
   }
 
   /**
-   * Apply the confirmed B2C result (idempotent). On success post the ledger draw-down
-   * (`DR payable / CR mpesa_clearing`, idempotency `payout:{id}`) and mark the payout (and any
-   * source settlements) paid. Replaying is a no-op.
+   * Core idempotent confirm applied to an already-locked payout. On success post the ledger
+   * draw-down (`DR payable / CR mpesa_clearing`, idempotency `payout:{id}`) and mark the payout (and
+   * any source settlements) paid. Replaying a final payout is a no-op.
    */
+  async function doConfirm(
+    repos: PayoutRepos,
+    payout: PayoutRecord,
+    success: boolean,
+  ): Promise<ConfirmOutcome> {
+    if (payout.status === 'paid' || payout.status === 'failed') {
+      return payout.status === 'paid' ? 'already_final' : 'failed';
+    }
+    if (payout.status !== 'processing') {
+      throw conflict('PAYOUT_NOT_PROCESSING', `Payout is ${payout.status}, not processing`);
+    }
+    if (!success) {
+      await repos.payouts.setPayoutFailed(payout.id);
+      return 'failed';
+    }
+    await ledgerService.post(repos.ledger, {
+      kind: 'payout',
+      refType: 'payout',
+      refId: payout.id,
+      idempotencyKey: `payout:${payout.id}`,
+      lines: buildPayoutLines(payout.payeeType, payout.payeeId, payout.amountCents),
+    });
+    await repos.payouts.setPayoutPaid(payout.id);
+    await repos.payouts.markSettlementsPaid(await repos.payouts.settlementRefsForPayout(payout.id));
+    return 'paid';
+  }
+
+  /** Apply the confirmed B2C result by payout ulid (dev-simulate seam). Idempotent. */
   async function confirmPayout(ulid: string, success: boolean): Promise<ConfirmOutcome> {
-    return withTransaction(async ({ payouts, ledger }) => {
-      const payout = await payouts.lockPayoutByUlid(ulid);
+    return withTransaction(async (repos) => {
+      const payout = await repos.payouts.lockPayoutByUlid(ulid);
       if (!payout) {
         throw notFound('Payout not found');
       }
-      if (payout.status === 'paid' || payout.status === 'failed') {
-        return payout.status === 'paid' ? 'already_final' : 'failed';
-      }
-      if (payout.status !== 'processing') {
-        throw conflict('PAYOUT_NOT_PROCESSING', `Payout is ${payout.status}, not processing`);
-      }
-      if (!success) {
-        await payouts.setPayoutFailed(payout.id);
-        return 'failed';
-      }
-      await ledgerService.post(ledger, {
-        kind: 'payout',
-        refType: 'payout',
-        refId: payout.id,
-        idempotencyKey: `payout:${payout.id}`,
-        lines: buildPayoutLines(payout.payeeType, payout.payeeId, payout.amountCents),
+      return doConfirm(repos, payout, success);
+    });
+  }
+
+  /**
+   * Apply a Daraja B2C result callback (doc 07 §10). The raw event is persisted + de-duplicated by
+   * `conversationId:resultCode` (replay → `duplicate`), then the payout is matched by its
+   * `external_ref` (the conversation id) and confirmed. An unknown id is recorded, not dropped.
+   */
+  async function applyB2cResult(input: {
+    conversationId: string;
+    resultCode: number;
+    rawPayload: unknown;
+  }): Promise<ConfirmOutcome | 'duplicate' | 'unknown'> {
+    return withTransaction(async (repos) => {
+      const payout = await repos.payouts.lockPayoutByExternalRef(input.conversationId);
+      const fresh = await repos.payouts.insertPayoutEventDedup({
+        payoutId: payout?.id ?? null,
+        source: 'b2c_result',
+        dedupeKey: `${input.conversationId}:${input.resultCode}`,
+        resultCode: input.resultCode,
+        rawPayload: input.rawPayload,
       });
-      await payouts.setPayoutPaid(payout.id);
-      await payouts.markSettlementsPaid(await payouts.settlementRefsForPayout(payout.id));
-      return 'paid';
+      if (!fresh) {
+        return 'duplicate';
+      }
+      if (!payout) {
+        return 'unknown';
+      }
+      return doConfirm(repos, payout, input.resultCode === 0);
     });
   }
 
@@ -294,6 +334,7 @@ export function createPayoutService(deps: PayoutServiceDeps) {
     approveOps: (actor: Actor, ulid: string) => approve(actor, ulid, 'ops'),
     executePayout,
     confirmPayout,
+    applyB2cResult,
     simulate,
     getPayout,
     listPayouts,

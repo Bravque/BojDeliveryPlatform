@@ -7,58 +7,40 @@ import type {
   StkStatusResult,
 } from '../gateway';
 import type { DarajaClient, DarajaHttpError } from './client';
+import { darajaTimestamp, toMsisdn, toShillings } from './format';
 
 /**
  * Daraja STK adapter (doc 07 §2–3). Implements the money-in path (`initiateStkPush` +
- * `queryStkStatus`) behind the shared `PaymentGateway` interface, so flipping `PAYMENT_PROVIDER`
- * to a Daraja value changes nothing outside this folder. Capture is driven by the verified
- * callback (which carries the amount); the STK Query API is a status-only backstop.
- *
- * `initiateReversal` (refund via Daraja) shares the RSA `SecurityCredential` machinery with B2C and
- * is implemented in the next increment.
+ * `queryStkStatus`) and the refund money-out path (`initiateReversal`) behind the shared
+ * `PaymentGateway` interface, so flipping `PAYMENT_PROVIDER` to a Daraja value changes nothing
+ * outside this folder. Capture is driven by the verified callback (which carries the amount); the
+ * STK Query API is a status-only backstop.
  */
+
+/** Initiator-side config shared with B2C, required for the authenticated reversal API. */
+export interface DarajaReversalConfig {
+  initiatorName: string;
+  /** RSA-encrypted initiator password (see security-credential). */
+  securityCredential: string;
+  /** Short code the reversal credits back to (ReceiverParty). */
+  shortcode: string;
+  resultUrl: string;
+  timeoutUrl: string;
+}
 
 export interface DarajaGatewayConfig {
   client: DarajaClient;
   shortcode: string;
   passkey: string;
   callbackUrl: string;
+  /** Required only to initiate refunds via Daraja TransactionReversal. */
+  reversal?: DarajaReversalConfig;
   /** Clock for the STK timestamp; injectable for deterministic tests. */
   now?: () => Date;
 }
 
 /** Daraja "transaction is being processed" — the STK is still pending when we query. */
 const STILL_PROCESSING = '500.001.1001';
-
-function pad(n: number): string {
-  return n.toString().padStart(2, '0');
-}
-
-/** Daraja timestamp format `YYYYMMDDHHmmss`. */
-function stkTimestamp(d: Date): string {
-  return (
-    `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}` +
-    `${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
-  );
-}
-
-/** M-Pesa amounts are whole KES shillings; our ledger is integer cents. */
-function toShillings(amountCents: number): number {
-  if (amountCents % 100 !== 0) {
-    throw new Error(
-      `Amount ${amountCents} cents is not a whole KES shilling; M-Pesa amounts must be whole shillings`,
-    );
-  }
-  return amountCents / 100;
-}
-
-/** Normalise a stored phone to an M-Pesa MSISDN (digits only, e.g. 2547XXXXXXXX). */
-function toMsisdn(phone: string | null): string {
-  if (!phone) {
-    throw new Error('STK push requires a customer phone number');
-  }
-  return phone.replace(/[^0-9]/g, '');
-}
 
 interface StkPushResponse {
   MerchantRequestID?: string;
@@ -84,7 +66,7 @@ export class DarajaGateway implements PaymentGateway {
   }
 
   async initiateStkPush(input: StkInitiateInput): Promise<StkInitiateResult> {
-    const timestamp = stkTimestamp(this.now());
+    const timestamp = darajaTimestamp(this.now());
     const msisdn = toMsisdn(input.phone);
     const payload = {
       BusinessShortCode: this.cfg.shortcode,
@@ -115,7 +97,7 @@ export class DarajaGateway implements PaymentGateway {
   }
 
   async queryStkStatus(checkoutRequestId: string): Promise<StkStatusResult> {
-    const timestamp = stkTimestamp(this.now());
+    const timestamp = darajaTimestamp(this.now());
     const payload = {
       BusinessShortCode: this.cfg.shortcode,
       Password: this.password(timestamp),
@@ -153,11 +135,44 @@ export class DarajaGateway implements PaymentGateway {
       : { status: 'failed', resultCode, resultDesc, amountCents: null, mpesaReceipt: null };
   }
 
-  initiateReversal(_input: ReversalInput): Promise<ReversalInitiateResult> {
-    return Promise.reject(
-      new Error(
-        'Daraja reversal is implemented in the next increment (shares the B2C security credential)',
-      ),
-    );
+  /**
+   * Refund via Daraja TransactionReversal (doc 07 §8). Requires the original M-Pesa receipt and the
+   * initiator credentials. Returns the provider conversation id as the reversal reference; the final
+   * reversal result is confirmed out-of-band via the existing refund confirm seam.
+   */
+  async initiateReversal(input: ReversalInput): Promise<ReversalInitiateResult> {
+    const r = this.cfg.reversal;
+    if (!r) {
+      throw new Error(
+        'Daraja reversal is not configured (initiator + security credential required)',
+      );
+    }
+    if (!input.originalReceipt) {
+      throw new Error('Daraja reversal requires the original M-Pesa receipt (TransactionID)');
+    }
+    const payload = {
+      Initiator: r.initiatorName,
+      SecurityCredential: r.securityCredential,
+      CommandID: 'TransactionReversal',
+      TransactionID: input.originalReceipt,
+      Amount: toShillings(input.amountCents),
+      ReceiverParty: r.shortcode,
+      RecieverIdentifierType: '11', // organisation short code (Daraja's documented spelling)
+      ResultURL: r.resultUrl,
+      QueueTimeOutURL: r.timeoutUrl,
+      Remarks: `Refund ${input.reference}`,
+      Occasion: input.reference,
+    };
+    const res = await this.cfg.client.postJson<{
+      ConversationID?: string;
+      ResponseCode?: string;
+      ResponseDescription?: string;
+    }>('/mpesa/reversal/v1/request', payload);
+    if (res.ResponseCode !== '0' || !res.ConversationID) {
+      throw new Error(
+        `Daraja reversal rejected (ResponseCode=${res.ResponseCode ?? 'none'}: ${res.ResponseDescription ?? ''})`,
+      );
+    }
+    return { reversalId: res.ConversationID };
   }
 }

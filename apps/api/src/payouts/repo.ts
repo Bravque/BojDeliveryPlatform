@@ -60,6 +60,18 @@ export interface PayoutsRepo {
   }): Promise<void>;
   findPayoutByUlid(ulid: string): Promise<PayoutRecord | null>;
   lockPayoutByUlid(ulid: string): Promise<PayoutRecord | null>;
+  /** Load + lock a payout by its provider conversation id (B2C `external_ref`). */
+  lockPayoutByExternalRef(externalRef: string): Promise<PayoutRecord | null>;
+  /** Payee M-Pesa MSISDN: rider → user phone; merchant → not modelled yet (null). */
+  getPayeeMsisdn(payeeType: PayeeType, payeeId: number): Promise<string | null>;
+  /** Persist a raw B2C result event; returns false when `dedupeKey` already exists (replay). */
+  insertPayoutEventDedup(input: {
+    payoutId: number | null;
+    source: 'b2c_result' | 'b2c_timeout' | 'manual';
+    dedupeKey: string;
+    resultCode: number | null;
+    rawPayload: unknown;
+  }): Promise<boolean>;
   setFinanceApprover(payoutId: number, userId: number): Promise<void>;
   setOpsApprover(payoutId: number, userId: number): Promise<void>;
   setPayoutApproved(payoutId: number): Promise<void>;
@@ -180,6 +192,40 @@ export function createKnexPayoutsRepo(exec: Knex): PayoutsRepo {
       const row = (await exec('payout').where({ ulid }).forUpdate().first()) as
         PayoutRowDb | undefined;
       return row ? mapPayout(row) : null;
+    },
+
+    async lockPayoutByExternalRef(externalRef) {
+      const row = (await exec('payout')
+        .where({ external_ref: externalRef })
+        .forUpdate()
+        .first()) as PayoutRowDb | undefined;
+      return row ? mapPayout(row) : null;
+    },
+
+    async getPayeeMsisdn(payeeType, payeeId) {
+      // Rider payee_id = rider_profile.user_id = user.id → the rider's M-Pesa number.
+      // Merchant payout destinations are not modelled yet (settled off-platform / future field).
+      if (payeeType !== 'rider') {
+        return null;
+      }
+      const row = (await exec('user').where({ id: payeeId }).first('phone_e164')) as
+        { phone_e164: string } | undefined;
+      return row?.phone_e164 ?? null;
+    },
+
+    async insertPayoutEventDedup(input) {
+      const inserted = await exec('payout_event')
+        .insert({
+          payout_id: input.payoutId,
+          source: input.source,
+          dedupe_key: input.dedupeKey,
+          result_code: input.resultCode,
+          raw_payload: JSON.stringify(input.rawPayload),
+        })
+        .onConflict('dedupe_key')
+        .ignore();
+      const affected = Array.isArray(inserted) ? (inserted[0] ?? 0) : inserted;
+      return Number(affected) > 0;
     },
 
     async setFinanceApprover(payoutId, userId) {

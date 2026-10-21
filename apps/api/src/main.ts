@@ -47,6 +47,8 @@ import { createKnexSettlementsRepo } from './settlements/repo';
 import { createPayoutService } from './payouts/payout-service';
 import { createKnexPayoutsRepo } from './payouts/repo';
 import { SimulatedPayoutGateway } from './payouts/gateway';
+import { DarajaPayoutGateway } from './payouts/daraja/daraja-payout-gateway';
+import { buildSecurityCredential } from './payouts/daraja/security-credential';
 import { createReportService } from './reports/report-service';
 import { createKnexReportsRepo } from './reports/repo';
 import { createPresenceService } from './riders/presence-service';
@@ -177,6 +179,28 @@ function main(): void {
     requireAuth: auth.requireAuth,
   };
 
+  // M-Pesa callback webhook IP allow-list (shared by the STK + B2C-result webhooks).
+  const webhookIpAllowlist = env.DARAJA_WEBHOOK_IP_ALLOWLIST?.split(',')
+    .map((ip) => ip.trim())
+    .filter(Boolean);
+
+  // Real Daraja wiring (STK + B2C + reversal), built once and shared; null under 'simulated'.
+  // loadEnv guarantees the credentials when a Daraja provider is selected, so the `!` are safe.
+  const daraja =
+    env.PAYMENT_PROVIDER === 'simulated'
+      ? null
+      : {
+          client: createDarajaClient({
+            baseUrl: env.DARAJA_BASE_URL!,
+            consumerKey: env.DARAJA_CONSUMER_KEY!,
+            consumerSecret: env.DARAJA_CONSUMER_SECRET!,
+          }),
+          securityCredential: buildSecurityCredential(
+            env.DARAJA_SECURITY_CERT!,
+            env.DARAJA_INITIATOR_PASSWORD!,
+          ),
+        };
+
   const payouts = {
     payoutService: createPayoutService({
       withTransaction: (work) =>
@@ -184,10 +208,21 @@ function main(): void {
           work({ payouts: createKnexPayoutsRepo(trx), ledger: createKnexLedgerRepo(trx) }),
         ),
       ledgerService,
-      gateway: new SimulatedPayoutGateway(),
+      gateway: daraja
+        ? new DarajaPayoutGateway({
+            client: daraja.client,
+            initiatorName: env.DARAJA_INITIATOR_NAME!,
+            securityCredential: daraja.securityCredential,
+            shortcode: env.DARAJA_B2C_SHORTCODE!,
+            resultUrl: env.DARAJA_B2C_RESULT_URL!,
+            timeoutUrl: env.DARAJA_B2C_TIMEOUT_URL!,
+          })
+        : new SimulatedPayoutGateway(),
       auditService: auth.auditService,
     }),
     requireAuth: auth.requireAuth,
+    webhookToken: env.MPESA_WEBHOOK_TOKEN,
+    webhookIpAllowlist,
     allowDevSimulate: env.NODE_ENV !== 'production',
   };
 
@@ -254,26 +289,25 @@ function main(): void {
   // Simulated locally/CI; a Daraja value swaps in the real STK adapter (doc 07 §2). Daraja creds are
   // validated as required by loadEnv when a Daraja provider is selected, so the `!` are safe here.
   const buildGateway = (): { gateway: PaymentGateway; method: PaymentMethod } => {
-    if (env.PAYMENT_PROVIDER === 'simulated') {
+    if (!daraja) {
       return { gateway: new SimulatedGateway(), method: 'simulated' };
     }
-    const client = createDarajaClient({
-      baseUrl: env.DARAJA_BASE_URL!,
-      consumerKey: env.DARAJA_CONSUMER_KEY!,
-      consumerSecret: env.DARAJA_CONSUMER_SECRET!,
-    });
     const gateway = new DarajaGateway({
-      client,
+      client: daraja.client,
       shortcode: env.DARAJA_SHORTCODE!,
       passkey: env.DARAJA_PASSKEY!,
       callbackUrl: env.DARAJA_CALLBACK_URL!,
+      reversal: {
+        initiatorName: env.DARAJA_INITIATOR_NAME!,
+        securityCredential: daraja.securityCredential,
+        shortcode: env.DARAJA_B2C_SHORTCODE!,
+        resultUrl: env.DARAJA_B2C_RESULT_URL!,
+        timeoutUrl: env.DARAJA_B2C_TIMEOUT_URL!,
+      },
     });
     return { gateway, method: 'mpesa_stk' };
   };
   const { gateway, method: paymentMethod } = buildGateway();
-  const webhookIpAllowlist = env.DARAJA_WEBHOOK_IP_ALLOWLIST?.split(',')
-    .map((ip) => ip.trim())
-    .filter(Boolean);
   const captureService = createCaptureService({
     readRepo: createKnexPaymentsRepo(db),
     withTransaction: (work) =>

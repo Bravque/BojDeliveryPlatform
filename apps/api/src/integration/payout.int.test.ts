@@ -59,6 +59,7 @@ describe.skipIf(!DATABASE_URL)('payout integration (real MySQL)', () => {
           auditService: createAuditService(createKnexAuthRepo(db)),
         }),
         requireAuth: createRequireAuth({ publicKey, issuer: ISSUER, audience: AUDIENCE }),
+        webhookToken: undefined,
         allowDevSimulate: true,
       },
     });

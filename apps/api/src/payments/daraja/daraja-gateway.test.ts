@@ -15,6 +15,7 @@ let server: Server;
 let baseUrl: string;
 let oauthCalls = 0;
 let lastStkBody: Record<string, unknown>;
+let lastReversalBody: Record<string, unknown>;
 let queryMode: 'success' | 'failed' | 'processing';
 
 beforeAll(async () => {
@@ -43,6 +44,10 @@ beforeAll(async () => {
     } else {
       res.status(500).json({ errorCode: '500.001.1001', errorMessage: 'processing' });
     }
+  });
+  app.post('/mpesa/reversal/v1/request', (req, res) => {
+    lastReversalBody = req.body as Record<string, unknown>;
+    res.json({ ConversationID: 'AG_REV_1', ResponseCode: '0', ResponseDescription: 'accepted' });
   });
   await new Promise<void>((resolve) => {
     server = app.listen(0, resolve);
@@ -147,7 +152,26 @@ describe('DarajaGateway — STK query', () => {
 });
 
 describe('DarajaGateway — reversal', () => {
-  it('is deferred to the next increment (shares the B2C security credential)', async () => {
+  const reversalCfg = {
+    initiatorName: 'apiop',
+    securityCredential: 'enc-cred',
+    shortcode: '600000',
+    resultUrl: 'https://api.boj.local/webhooks/mpesa/reversal-result',
+    timeoutUrl: 'https://api.boj.local/webhooks/mpesa/reversal-timeout',
+  };
+
+  function makeReversalGateway() {
+    const client = createDarajaClient({ baseUrl, consumerKey: 'ck', consumerSecret: 'cs' });
+    return new DarajaGateway({
+      client,
+      shortcode: '174379',
+      passkey: 'passkey-x',
+      callbackUrl: 'https://api.boj.local/webhooks/mpesa/stk',
+      reversal: reversalCfg,
+    });
+  }
+
+  it('throws when reversal is not configured', async () => {
     await expect(
       makeGateway().initiateReversal({
         originalReceipt: 'R1',
@@ -155,6 +179,35 @@ describe('DarajaGateway — reversal', () => {
         amountCents: 100_000,
         reference: 'refund-ulid',
       }),
-    ).rejects.toThrow(/next increment/);
+    ).rejects.toThrow(/not configured/);
+  });
+
+  it('requires the original receipt (TransactionID)', async () => {
+    await expect(
+      makeReversalGateway().initiateReversal({
+        originalReceipt: null,
+        checkoutRequestId: 'ws_CO_9',
+        amountCents: 100_000,
+        reference: 'refund-ulid',
+      }),
+    ).rejects.toThrow(/original M-Pesa receipt/);
+  });
+
+  it('posts a TransactionReversal and returns the conversation id', async () => {
+    const res = await makeReversalGateway().initiateReversal({
+      originalReceipt: 'RCPT777',
+      checkoutRequestId: 'ws_CO_9',
+      amountCents: 100_000,
+      reference: 'refund-ulid',
+    });
+    expect(res).toEqual({ reversalId: 'AG_REV_1' });
+    expect(lastReversalBody).toMatchObject({
+      CommandID: 'TransactionReversal',
+      TransactionID: 'RCPT777',
+      Amount: 1000,
+      Initiator: 'apiop',
+      SecurityCredential: 'enc-cred',
+      ReceiverParty: '600000',
+    });
   });
 });

@@ -38,6 +38,7 @@ const payoutService: PayoutService = {
   executePayout: () =>
     Promise.resolve({ ...view, status: 'processing', externalRef: 'SIMB2C-REF' }),
   confirmPayout: () => Promise.resolve('paid'),
+  applyB2cResult: () => Promise.resolve('paid'),
   simulate: () => Promise.resolve('paid'),
   getPayout: () => Promise.resolve(view),
   listPayouts: () => Promise.resolve([view]),
@@ -50,6 +51,7 @@ function app() {
     payouts: {
       payoutService,
       requireAuth: createRequireAuth({ publicKey, issuer: ISSUER, audience: AUDIENCE }),
+      webhookToken: undefined,
       allowDevSimulate: true,
     },
   });
