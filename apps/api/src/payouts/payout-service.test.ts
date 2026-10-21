@@ -53,6 +53,7 @@ function makeWorld(
   const payouts: PayoutRecord[] = [];
   const lines: Array<{ payoutId: number; refType: string; refId: number }> = [];
   const settlementsPaid: number[] = [];
+  const events = new Set<string>();
   const users = new Map<string, number>([
     ['FIN', 1],
     ['OPS', 2],
@@ -90,6 +91,16 @@ function makeWorld(
       Promise.resolve(payouts.find((p) => p.ulid === ulid) ?? null),
     lockPayoutByUlid: (ulid: string) =>
       Promise.resolve(payouts.find((p) => p.ulid === ulid) ?? null),
+    lockPayoutByExternalRef: (ref: string) =>
+      Promise.resolve(payouts.find((p) => p.externalRef === ref) ?? null),
+    getPayeeMsisdn: () => Promise.resolve('+254700000123'),
+    insertPayoutEventDedup: (input: { dedupeKey: string }) => {
+      if (events.has(input.dedupeKey)) {
+        return Promise.resolve(false);
+      }
+      events.add(input.dedupeKey);
+      return Promise.resolve(true);
+    },
     setFinanceApprover: (id: number, userId: number) => {
       payouts.find((p) => p.id === id)!.financeApprovedBy = userId;
       return Promise.resolve();
@@ -243,5 +254,50 @@ describe('payout service — dual-sign + execute + confirm', () => {
     expect(await w.svc.confirmPayout(ulid, false)).toBe('failed');
     expect(w.payouts[0]?.status).toBe('failed');
     expect(w.ledger.txns).toHaveLength(0);
+  });
+});
+
+describe('payout service — B2C result callback (applyB2cResult)', () => {
+  async function processing() {
+    const w = makeWorld({ settlements: [{ settlementId: 1, merchantId: 10, netCents: 40_000 }] });
+    const { payouts } = await w.svc.generatePayouts(FIN, period);
+    const ulid = payouts[0]!.ulid;
+    await w.svc.approveFinance(FIN, ulid);
+    await w.svc.approveOps(OPS, ulid);
+    await w.svc.executePayout(FIN, ulid); // externalRef = 'SIMB2C-REF'
+    return { w, ulid, conversationId: 'SIMB2C-REF' };
+  }
+
+  it('confirms the matching payout on a success result; a replay is de-duplicated', async () => {
+    const { w, conversationId } = await processing();
+    expect(await w.svc.applyB2cResult({ conversationId, resultCode: 0, rawPayload: {} })).toBe(
+      'paid',
+    );
+    expect(w.payouts[0]?.status).toBe('paid');
+    expect(w.settlementsPaid).toEqual([1]);
+    expect(w.ledger.txns).toHaveLength(1);
+
+    // Same conversation + result replayed → deduped, no second posting.
+    expect(await w.svc.applyB2cResult({ conversationId, resultCode: 0, rawPayload: {} })).toBe(
+      'duplicate',
+    );
+    expect(w.ledger.txns).toHaveLength(1);
+  });
+
+  it('marks the payout failed on a non-zero result code', async () => {
+    const { w, conversationId } = await processing();
+    expect(await w.svc.applyB2cResult({ conversationId, resultCode: 1, rawPayload: {} })).toBe(
+      'failed',
+    );
+    expect(w.payouts[0]?.status).toBe('failed');
+    expect(w.ledger.txns).toHaveLength(0);
+  });
+
+  it('records but does not act on an unknown conversation id', async () => {
+    const { w } = await processing();
+    expect(
+      await w.svc.applyB2cResult({ conversationId: 'NOPE', resultCode: 0, rawPayload: {} }),
+    ).toBe('unknown');
+    expect(w.payouts[0]?.status).toBe('processing');
   });
 });

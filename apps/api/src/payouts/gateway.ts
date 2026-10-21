@@ -9,6 +9,9 @@ export interface B2cInput {
   payeeId: number;
   amountCents: number;
   reference: string; // the payout ulid
+  /** Payee M-Pesa destination (MSISDN). Null when none is on file; the simulated gateway ignores
+   * it, the real Daraja B2C gateway requires it. */
+  payeePhone: string | null;
 }
 
 export interface B2cInitiateResult {

@@ -41,25 +41,38 @@ const envSchema = z.object({
   DARAJA_SHORTCODE: z.string().optional(),
   DARAJA_PASSKEY: z.string().optional(),
   DARAJA_CALLBACK_URL: z.string().url().optional(),
-  // Optional allow-list (csv of IPs) for the M-Pesa callback webhook; empty = no IP restriction.
+  // Optional allow-list (csv of IPs) for the M-Pesa callback webhooks; empty = no IP restriction.
   DARAJA_WEBHOOK_IP_ALLOWLIST: z.string().optional(),
+  // B2C / reversal (money-out, Phase 8 Inc 3): initiator + RSA cert for the SecurityCredential.
+  DARAJA_INITIATOR_NAME: z.string().optional(),
+  DARAJA_INITIATOR_PASSWORD: z.string().optional(),
+  DARAJA_B2C_SHORTCODE: z.string().optional(),
+  DARAJA_SECURITY_CERT: z.string().optional(), // Safaricom public cert (PEM)
+  DARAJA_B2C_RESULT_URL: z.string().url().optional(),
+  DARAJA_B2C_TIMEOUT_URL: z.string().url().optional(),
 });
 
-/** STK (money-in) config required once a Daraja provider is selected. */
-const DARAJA_STK_REQUIRED = [
+/** Config required once a Daraja provider is selected (money-in STK + money-out B2C/reversal). */
+const DARAJA_REQUIRED = [
   'DARAJA_BASE_URL',
   'DARAJA_CONSUMER_KEY',
   'DARAJA_CONSUMER_SECRET',
   'DARAJA_SHORTCODE',
   'DARAJA_PASSKEY',
   'DARAJA_CALLBACK_URL',
+  'DARAJA_INITIATOR_NAME',
+  'DARAJA_INITIATOR_PASSWORD',
+  'DARAJA_B2C_SHORTCODE',
+  'DARAJA_SECURITY_CERT',
+  'DARAJA_B2C_RESULT_URL',
+  'DARAJA_B2C_TIMEOUT_URL',
 ] as const;
 
 const envSchemaChecked = envSchema.superRefine((val, ctx) => {
   if (val.PAYMENT_PROVIDER === 'simulated') {
     return;
   }
-  for (const key of DARAJA_STK_REQUIRED) {
+  for (const key of DARAJA_REQUIRED) {
     if (!val[key]) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

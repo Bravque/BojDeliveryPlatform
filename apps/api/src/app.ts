@@ -39,7 +39,12 @@ import {
 import { adminPromotionsRouter, type PromotionsModule } from './routes/promotions';
 import { quoteRouter, type PricingModule } from './routes/quote';
 import { reportsRouter, type ReportsModule } from './routes/reports';
-import { devPayoutsRouter, payoutsRouter, type PayoutsModule } from './routes/payouts';
+import {
+  b2cResultWebhookRouter,
+  devPayoutsRouter,
+  payoutsRouter,
+  type PayoutsModule,
+} from './routes/payouts';
 import { settlementsRouter, type SettlementsModule } from './routes/settlements';
 import { adminRiderRouter, presenceRouter, riderRouter, type RidersModule } from './routes/riders';
 
@@ -216,6 +221,13 @@ export function createApp(deps: AppDeps): Express {
     }
     if (deps.payouts) {
       apiV1.use(payoutsRouter(deps.payouts.payoutService, deps.payouts.requireAuth));
+      apiV1.use(
+        b2cResultWebhookRouter(
+          deps.payouts.payoutService,
+          deps.payouts.webhookToken,
+          deps.payouts.webhookIpAllowlist,
+        ),
+      );
       if (deps.payouts.allowDevSimulate) {
         apiV1.use(devPayoutsRouter(deps.payouts.payoutService, deps.payouts.requireAuth));
       }

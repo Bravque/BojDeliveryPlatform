@@ -1,13 +1,19 @@
 import express, { type Request, type RequestHandler, type Router } from 'express';
 import { z } from 'zod';
+import { forbidden } from '../http/errors';
 import { asyncHandler } from '../middleware/error';
 import { requirePolicy, requireRole } from '../middleware/rbac';
 import type { Actor, PayoutService } from '../payouts/payout-service';
+import { parseB2cResult } from '../payouts/daraja/b2c-result';
 
 /** Payout dependencies for the app factory. */
 export interface PayoutsModule {
   payoutService: PayoutService;
   requireAuth: RequestHandler;
+  /** Shared secret the B2C result webhook must present; when undefined the webhook rejects all. */
+  webhookToken: string | undefined;
+  /** Optional IP allow-list for the B2C result webhook; empty/undefined = no IP restriction. */
+  webhookIpAllowlist?: string[];
   /** Mount the non-production dev B2C-confirm endpoint (NODE_ENV !== 'production'). */
   allowDevSimulate: boolean;
 }
@@ -86,6 +92,49 @@ export function payoutsRouter(payoutService: PayoutService, requireAuth: Request
     }),
   );
 
+  return router;
+}
+
+/**
+ * Daraja B2C result webhook (doc 07 §10) — no user auth; hardened by an optional source-IP
+ * allow-list + a shared `X-Webhook-Token`. Persists + de-duplicates the raw result, then confirms
+ * the matching payout (idempotent). Always acks 200 for a recognised request so Daraja stops
+ * retrying; an unparseable body is a 400.
+ */
+export function b2cResultWebhookRouter(
+  payoutService: PayoutService,
+  webhookToken: string | undefined,
+  webhookIpAllowlist?: string[],
+): Router {
+  const router = express.Router();
+  router.post(
+    '/webhooks/mpesa/b2c-result',
+    asyncHandler(async (req, res) => {
+      if (
+        webhookIpAllowlist &&
+        webhookIpAllowlist.length > 0 &&
+        !webhookIpAllowlist.includes(req.ip ?? '')
+      ) {
+        throw forbidden('Source IP not allow-listed');
+      }
+      if (!webhookToken || req.get('X-Webhook-Token') !== webhookToken) {
+        throw forbidden('Invalid webhook token');
+      }
+      const parsed = parseB2cResult(req.body);
+      if (!parsed) {
+        res
+          .status(400)
+          .json({ error: { code: 'BAD_REQUEST', message: 'Unrecognised B2C result' } });
+        return;
+      }
+      const status = await payoutService.applyB2cResult({
+        conversationId: parsed.conversationId,
+        resultCode: parsed.resultCode,
+        rawPayload: req.body,
+      });
+      res.status(200).json({ status });
+    }),
+  );
   return router;
 }
 
