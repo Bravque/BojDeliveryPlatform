@@ -5,6 +5,14 @@ documents (`../01`…`../12`) are updated to match and point back here.
 
 ---
 
+## 2026-10-21 — Phase 7: settlement/payout cadence + payout rail (D16)
+
+| ID | Decision | Accepted value | Notes / guardrails |
+|----|----------|----------------|--------------------|
+| **D16** | How settlements/payouts are run and how money leaves the platform | **On-demand, operator-triggered** generation with the period as an explicit parameter (`{ periodStart, periodEnd }`) — no scheduler this phase. Payouts use a **simulated M-Pesa B2C** rail (`PayoutGateway`/`SimulatedPayoutGateway`): execute → provider ref → out-of-band confirm (dev-simulate / webhook), mirroring the STK + refund-reversal seams. A payout is **dual-signed**: a finance approval **and** an ops approval by **two distinct users** are required before execute. | (The payout/settlement cadence + B2C-rail question the Phase-7 plan tracked as a placeholder "D13"; **D13 was already assigned** to the zone model, so it lands here as **D16**.) Cadence = how often ops run the endpoints; a real scheduler (BullMQ) stays deferred to Phase 8, consistent with Phases 4–6. Idempotency is enforced end-to-end: `UNIQUE(merchant_id, period_start, period_end)` on settlement, `payout.idempotency_key` UNIQUE, and the ledger draw-down keyed `payout:{id}` — so re-generate / double-confirm never double-pays. A payout is **never `paid` until the B2C result is confirmed** (D6 parity): execute → `processing`; only the confirmed success posts `DR merchant_payable|rider_payable / CR mpesa_clearing` and marks the source settlement `paid`; failure is retryable without double-paying. Real Daraja B2C swaps in behind `PayoutGateway` in Phase 8 with no service change. No E9 float/cash guard this phase. |
+
+---
+
 ## 2026-10-20 — Phase 5: rider fee model (D15)
 
 | ID | Decision | Accepted value | Notes / guardrails |
