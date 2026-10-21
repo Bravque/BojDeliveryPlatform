@@ -25,6 +25,14 @@ const envSchema = z.object({
   // Proof-of-delivery PIN (D7): how long an issued PIN is valid, and the attempt cap before lockout.
   DELIVERY_PIN_TTL_SEC: z.coerce.number().int().min(30).max(86_400).default(900),
   DELIVERY_PIN_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(5),
+  // HTTP hardening (Phase 8, doc 10 §8). CORS allow-list (csv of origins); empty = same-origin only.
+  CORS_ALLOWED_ORIGINS: z.string().optional(),
+  // Trust-proxy hop count behind the load balancer (0 = none). Used for correct client IPs.
+  TRUST_PROXY: z.coerce.number().int().min(0).max(10).default(1),
+  // Per-IP rate limiting: window + global cap, plus a stricter cap on the auth surface.
+  RATE_LIMIT_WINDOW_SEC: z.coerce.number().int().min(1).max(3600).default(60),
+  RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(300),
+  AUTH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(20),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;

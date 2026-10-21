@@ -2,6 +2,12 @@ import { randomUUID } from 'node:crypto';
 import express, { type Express } from 'express';
 import pinoHttp from 'pino-http';
 import { errorHandler, notFoundHandler } from './middleware/error';
+import {
+  corsAllowlist,
+  createRateLimiter,
+  securityHeaders,
+  type RateLimitOptions,
+} from './middleware/security';
 import type { Logger } from './platform/logger';
 import { merchantAdminRouter, type MerchantModule } from './routes/admin-merchants';
 import { adminRouter } from './routes/admin';
@@ -73,6 +79,17 @@ export interface AppDeps {
   payouts?: PayoutsModule;
   /** When provided, mounts the read-only `/api/v1/admin/reports` endpoints. */
   reports?: ReportsModule;
+  /** HTTP hardening (Phase 8). Absent in most tests; main.ts always supplies it. */
+  security?: {
+    /** Allow-listed CORS origins; empty/absent = same-origin only. */
+    corsAllowedOrigins?: string[];
+    /** Express `trust proxy` setting (number of trusted hops behind the LB). */
+    trustProxy?: boolean | number | string;
+    /** Global per-IP rate limit across `/api/v1`. */
+    rateLimit?: RateLimitOptions;
+    /** Stricter per-IP rate limit on the `/api/v1/auth` surface. */
+    authRateLimit?: RateLimitOptions;
+  };
 }
 
 /** Build the Express application. Pure factory — no network/DB side effects. */
@@ -80,6 +97,13 @@ export function createApp(deps: AppDeps): Express {
   const app = express();
 
   app.disable('x-powered-by');
+  if (deps.security?.trustProxy !== undefined) {
+    app.set('trust proxy', deps.security.trustProxy);
+  }
+  app.use(securityHeaders());
+  if (deps.security?.corsAllowedOrigins && deps.security.corsAllowedOrigins.length > 0) {
+    app.use(corsAllowlist(deps.security.corsAllowedOrigins));
+  }
   app.use(express.json({ limit: '1mb' }));
 
   app.use(
@@ -115,6 +139,14 @@ export function createApp(deps: AppDeps): Express {
     deps.reports
   ) {
     const apiV1 = express.Router();
+    // Rate limiting (Phase 8): a global per-IP cap on the whole API, plus a stricter cap on the
+    // auth surface. Health lives above `/api/v1`, so it stays unlimited.
+    if (deps.security?.rateLimit) {
+      apiV1.use(createRateLimiter(deps.security.rateLimit));
+    }
+    if (deps.security?.authRateLimit) {
+      apiV1.use('/auth', createRateLimiter(deps.security.authRateLimit));
+    }
     if (deps.auth) {
       apiV1.use(authRouter(deps.auth));
       apiV1.use(adminRouter(deps.auth.requireAuth, deps.auth.auditService));
