@@ -24,4 +24,12 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // The browser frontend (merchant-web): DOM globals + JSX parsing.
+    files: ['apps/merchant-web/**/*.{ts,tsx}'],
+    languageOptions: {
+      globals: { ...globals.browser },
+      parserOptions: { ecmaFeatures: { jsx: true } },
+    },
+  },
 );

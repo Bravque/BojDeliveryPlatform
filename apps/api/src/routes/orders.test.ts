@@ -80,6 +80,8 @@ const fulfillmentService: FulfillmentService = {
   startPreparing: () => Promise.resolve(fulfilled('preparing')),
   markReadyForPickup: () => Promise.resolve(fulfilled('ready_for_pickup')),
   rejectOrder: () => Promise.resolve(fulfilled('rejected')),
+  listMerchantOrders: () =>
+    Promise.resolve({ merchant: { ulid: 'M1', name: 'Joe Kitchen' }, orders: [] }),
 };
 
 function app() {
@@ -138,6 +140,14 @@ describe('customer orders (auth required)', () => {
 
 describe('merchant order progression (RBAC)', () => {
   const staffAuth = () => ({ Authorization: `Bearer ${tokenFor(['merchant_owner'])}` });
+
+  it('lists the merchant dashboard orders for staff (200), forbids a customer (403)', async () => {
+    expect((await request(app()).get('/api/v1/merchant/orders').set(auth())).status).toBe(403);
+    const ok = await request(app()).get('/api/v1/merchant/orders').set(staffAuth());
+    expect(ok.status).toBe(200);
+    expect(ok.body.merchant.ulid).toBe('M1');
+    expect(Array.isArray(ok.body.orders)).toBe(true);
+  });
 
   it('forbids a customer accepting (403), allows merchant staff (200)', async () => {
     expect(
