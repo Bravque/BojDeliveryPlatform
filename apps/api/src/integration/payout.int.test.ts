@@ -80,6 +80,7 @@ describe.skipIf(!DATABASE_URL)('payout integration (real MySQL)', () => {
       'ledger_account',
       'delivery',
       'order',
+      'rider_profile',
       'address',
       'merchant',
       'zone',
@@ -129,6 +130,11 @@ describe.skipIf(!DATABASE_URL)('payout integration (real MySQL)', () => {
         await db('user').insert({ ulid: newUlid(), phone_e164: '+254700000241', status: 'active' })
       )[0],
     );
+    await db('rider_profile').insert({
+      user_id: riderId,
+      vehicle_type: 'motorbike',
+      status: 'approved',
+    });
     financeUlid = newUlid();
     await db('user').insert({ ulid: financeUlid, phone_e164: '+254700000242', status: 'active' });
     opsUlid = newUlid();
@@ -289,12 +295,12 @@ describe.skipIf(!DATABASE_URL)('payout integration (real MySQL)', () => {
     const settlement = await db('settlement').where({ merchant_id: merchantId }).first('status');
     expect(settlement.status).toBe('paid');
 
-    // Replay the confirm → no second posting.
+    // Replay the confirm → recognised as already final, no second posting.
     const replay = await request(app)
       .post(`/api/v1/dev/payouts/${ulid}/simulate`)
       .set(admin())
       .send({ outcome: 'success' });
-    expect(replay.body.status).toBe('paid');
+    expect(replay.body.status).toBe('already_final');
     expect(await payoutTxnCount()).toBe(1);
   });
 
