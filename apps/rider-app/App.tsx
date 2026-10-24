@@ -1,17 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Button,
-  FlatList,
-  SafeAreaView,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, FlatList, SafeAreaView, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { type ApiClient, createHttpApiClient } from './src/api';
 import { type RiderModel, type RiderState, createRiderModel } from './src/riderFlow';
 import { API_BASE_URL } from './src/config';
+import {
+  Alert,
+  Badge,
+  Card,
+  Field,
+  Muted,
+  PrimaryButton,
+  Screen,
+  SecondaryButton,
+  Title,
+  colors,
+} from './src/ui';
 
 export interface AppProps {
   api?: ApiClient;
@@ -25,8 +29,8 @@ export default function App(): JSX.Element {
 /**
  * Rider app shell (MVP critical journey): phone-OTP sign-in → go online → accept a live offer →
  * pickup → start → complete with the customer's PIN. All logic lives in `createRiderModel`
- * (unit-tested); this component only renders state and binds inputs. The RN UI is typecheck-
- * verified only (no device/emulator in CI). `api` is injectable for a future RN render test.
+ * (unit-tested); this component only renders state and binds inputs. `api` is injectable for a
+ * future RN render test.
  */
 export function RiderApp({ api }: AppProps = {}): JSX.Element {
   const modelRef = useRef<RiderModel>();
@@ -39,11 +43,13 @@ export function RiderApp({ api }: AppProps = {}): JSX.Element {
   useEffect(() => model.subscribe(setState), [model]);
 
   return (
-    <SafeAreaView>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       <StatusBar style="auto" />
-      {state.busy && <ActivityIndicator accessibilityLabel="Loading" />}
-      {state.error && <Text accessibilityRole="alert">{state.error}</Text>}
-      {renderScreen(model, state)}
+      <Screen>
+        {state.busy && <ActivityIndicator accessibilityLabel="Loading" color={colors.primary} />}
+        {state.error && <Alert message={state.error} />}
+        {renderScreen(model, state)}
+      </Screen>
     </SafeAreaView>
   );
 }
@@ -56,25 +62,42 @@ function renderScreen(model: RiderModel, state: RiderState): JSX.Element {
       return <OtpScreen phone={state.phone} onSubmit={(code) => void model.verifyOtp(code)} />;
     case 'offers':
       return (
-        <View>
-          <Text accessibilityRole="header">{state.online ? 'Online' : 'Offline'}</Text>
+        <View style={{ flex: 1 }}>
+          <Title>Rider</Title>
+          <Badge label={state.online ? 'Online' : 'Offline'} />
           {state.online ? (
-            <Button title="Go offline" onPress={() => void model.goOffline()} />
+            <SecondaryButton title="Go offline" onPress={() => void model.goOffline()} />
           ) : (
-            <Button title="Go online" onPress={() => void model.goOnline()} />
+            <PrimaryButton title="Go online" onPress={() => void model.goOnline()} />
           )}
-          <Button title="Refresh offers" onPress={() => void model.refreshOffers()} />
+          <View style={{ height: 8 }} />
+          <View
+            style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+          >
+            <Muted>Live offers</Muted>
+            <SecondaryButton title="Refresh" onPress={() => void model.refreshOffers()} />
+          </View>
           {state.offers.length === 0 ? (
-            <Text>No live offers.</Text>
+            <Card>
+              <Text style={{ color: colors.muted }}>No live offers right now.</Text>
+            </Card>
           ) : (
             <FlatList
               data={state.offers}
               keyExtractor={(o) => String(o.offerId)}
               renderItem={({ item }) => (
-                <View>
-                  <Text>Order {item.orderUlid}</Text>
-                  <Button title="Accept" onPress={() => void model.acceptOffer(item.offerId)} />
-                </View>
+                <Card>
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>
+                    Order {item.orderUlid}
+                  </Text>
+                  <Text style={{ color: colors.muted, marginTop: 2, marginBottom: 8 }}>
+                    Offer #{item.offerId}
+                  </Text>
+                  <PrimaryButton
+                    title="Accept"
+                    onPress={() => void model.acceptOffer(item.offerId)}
+                  />
+                </Card>
               )}
             />
           )}
@@ -83,19 +106,26 @@ function renderScreen(model: RiderModel, state: RiderState): JSX.Element {
     case 'delivery': {
       const status = state.delivery?.deliveryStatus;
       return (
-        <View>
-          <Text>Order {state.delivery?.orderUlid}</Text>
-          <Text accessibilityRole="header">{status}</Text>
+        <View style={{ flex: 1 }}>
+          <Title>Delivery</Title>
+          <Muted>Order {state.delivery?.orderUlid}</Muted>
+          <Card>
+            <Badge label={(status ?? '').replace(/_/g, ' ')} />
+            <Text style={{ color: colors.muted, marginTop: 8 }}>
+              Fee: KES {((state.delivery?.riderFeeCents ?? 0) / 100).toFixed(2)}
+            </Text>
+          </Card>
           {status === 'assigned' && (
-            <Button title="Confirm pickup" onPress={() => void model.pickup()} />
+            <PrimaryButton title="Confirm pickup" onPress={() => void model.pickup()} />
           )}
           {status === 'picked_up' && (
-            <Button title="Start delivery" onPress={() => void model.startDelivery()} />
+            <PrimaryButton title="Start delivery" onPress={() => void model.startDelivery()} />
           )}
           {status === 'out_for_delivery' && (
             <CompleteScreen onSubmit={(pin) => void model.complete(pin)} />
           )}
-          <Button title="Back to offers" onPress={() => model.backToOffers()} />
+          {status === 'delivered' && <Badge label="Delivered ✓" />}
+          <SecondaryButton title="Back to offers" onPress={() => model.backToOffers()} />
         </View>
       );
     }
@@ -106,14 +136,16 @@ function PhoneScreen({ onSubmit }: { onSubmit: (phone: string) => void }): JSX.E
   const [phone, setPhone] = useState('');
   return (
     <View>
-      <Text>Rider sign in</Text>
-      <TextInput
-        accessibilityLabel="Phone"
-        keyboardType="phone-pad"
+      <Title>Rider sign in</Title>
+      <Muted>Sign in with your phone number</Muted>
+      <Field
+        label="Phone number"
         value={phone}
         onChangeText={setPhone}
+        placeholder="+2547…"
+        keyboardType="phone-pad"
       />
-      <Button title="Send code" onPress={() => onSubmit(phone)} />
+      <PrimaryButton title="Send code" onPress={() => onSubmit(phone)} />
     </View>
   );
 }
@@ -128,14 +160,16 @@ function OtpScreen({
   const [code, setCode] = useState('');
   return (
     <View>
-      <Text>Code sent to {phone}</Text>
-      <TextInput
-        accessibilityLabel="Code"
-        keyboardType="number-pad"
+      <Title>Enter code</Title>
+      <Muted>Sent to {phone}</Muted>
+      <Field
+        label="Verification code"
         value={code}
         onChangeText={setCode}
+        placeholder="6-digit code"
+        keyboardType="number-pad"
       />
-      <Button title="Verify" onPress={() => onSubmit(code)} />
+      <PrimaryButton title="Verify" onPress={() => onSubmit(code)} />
     </View>
   );
 }
@@ -144,14 +178,14 @@ function CompleteScreen({ onSubmit }: { onSubmit: (pin: string) => void }): JSX.
   const [pin, setPin] = useState('');
   return (
     <View>
-      <Text>Enter the customer&apos;s delivery PIN</Text>
-      <TextInput
-        accessibilityLabel="PIN"
-        keyboardType="number-pad"
+      <Field
+        label="Customer's delivery PIN"
         value={pin}
         onChangeText={setPin}
+        placeholder="4-digit PIN"
+        keyboardType="number-pad"
       />
-      <Button title="Complete delivery" onPress={() => onSubmit(pin)} />
+      <PrimaryButton title="Complete delivery" onPress={() => onSubmit(pin)} />
     </View>
   );
 }

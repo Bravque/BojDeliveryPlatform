@@ -1,18 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Button,
-  FlatList,
-  SafeAreaView,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, FlatList, SafeAreaView, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { type ApiClient, catalogueProducts, createHttpApiClient } from './src/api';
 import { type CustomerModel, type CustomerState, createCustomerModel } from './src/customerFlow';
 import { type ConnectOrderSocket, makeConnectOrderSocket } from './src/socket';
 import { API_BASE_URL } from './src/config';
+import {
+  Alert,
+  Badge,
+  Card,
+  Field,
+  Muted,
+  PrimaryButton,
+  Screen,
+  SecondaryButton,
+  Title,
+  colors,
+} from './src/ui';
 
 export interface AppProps {
   api?: ApiClient;
@@ -27,8 +31,7 @@ export default function App(): JSX.Element {
 /**
  * Customer app shell (MVP critical journey): phone-OTP sign-in → browse merchants → open a
  * merchant menu → track an order live. All logic lives in `createCustomerModel` (unit-tested);
- * this component only renders state and binds inputs. The RN UI is intentionally minimal and is
- * typecheck-verified only (no device/emulator in CI). `api`/`connectSocket` are injectable for a
+ * this component only renders state and binds inputs. `api`/`connectSocket` are injectable for a
  * future RN render test.
  */
 export function CustomerApp({ api, connectSocket }: AppProps = {}): JSX.Element {
@@ -52,11 +55,13 @@ export function CustomerApp({ api, connectSocket }: AppProps = {}): JSX.Element 
   }, [state.screen, state.token, state.order, connect, model]);
 
   return (
-    <SafeAreaView>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       <StatusBar style="auto" />
-      {state.busy && <ActivityIndicator accessibilityLabel="Loading" />}
-      {state.error && <Text accessibilityRole="alert">{state.error}</Text>}
-      {renderScreen(model, state)}
+      <Screen>
+        {state.busy && <ActivityIndicator accessibilityLabel="Loading" color={colors.primary} />}
+        {state.error && <Alert message={state.error} />}
+        {renderScreen(model, state)}
+      </Screen>
     </SafeAreaView>
   );
 }
@@ -69,20 +74,29 @@ function renderScreen(model: CustomerModel, state: CustomerState): JSX.Element {
       return <OtpScreen phone={state.phone} onSubmit={(code) => void model.verifyOtp(code)} />;
     case 'browse':
       return (
-        <View>
-          <Text>Merchants near you</Text>
+        <View style={{ flex: 1 }}>
+          <Title>Order food &amp; more</Title>
+          <Muted>Merchants near you</Muted>
           <FlatList
             data={state.merchants}
             keyExtractor={(m) => m.ulid}
             renderItem={({ item }) => (
-              <View>
-                <Text>{item.name}</Text>
-                <Button
-                  title={item.isOpen ? 'View menu' : 'Closed'}
-                  disabled={!item.isOpen}
-                  onPress={() => void model.openMerchant(item.ulid)}
-                />
-              </View>
+              <Card>
+                <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text }}>
+                  {item.name}
+                </Text>
+                <Text style={{ color: colors.muted, marginTop: 2, marginBottom: 8 }}>
+                  {item.categoryType} · ~{item.prepMinutes} min · {item.townName}
+                </Text>
+                {item.isOpen ? (
+                  <PrimaryButton
+                    title="View menu"
+                    onPress={() => void model.openMerchant(item.ulid)}
+                  />
+                ) : (
+                  <Badge label="Closed" />
+                )}
+              </Card>
             )}
           />
         </View>
@@ -90,27 +104,46 @@ function renderScreen(model: CustomerModel, state: CustomerState): JSX.Element {
     case 'merchant': {
       const products = state.catalogue ? catalogueProducts(state.catalogue) : [];
       return (
-        <View>
-          <Text>{state.catalogue?.merchant.name}</Text>
+        <View style={{ flex: 1 }}>
+          <Title>{state.catalogue?.merchant.name}</Title>
+          <Muted>Menu</Muted>
           <FlatList
             data={products}
             keyExtractor={(p) => p.ulid}
             renderItem={({ item }) => (
-              <Text>
-                {item.name} — {(item.priceCents / 100).toFixed(2)} {item.currency}
-              </Text>
+              <Card>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text, flex: 1 }}>
+                    {item.name}
+                  </Text>
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: colors.primary }}>
+                    {item.currency} {(item.priceCents / 100).toFixed(2)}
+                  </Text>
+                </View>
+                {item.description ? (
+                  <Text style={{ color: colors.muted, marginTop: 4 }}>{item.description}</Text>
+                ) : null}
+              </Card>
             )}
           />
-          <Button title="Back" onPress={() => model.backToBrowse()} />
+          {/* Demo entry point to the live-tracking screen (an active order would normally link here). */}
+          <PrimaryButton title="Track my order" onPress={() => void model.trackOrder('demo')} />
+          <SecondaryButton title="Back to merchants" onPress={() => model.backToBrowse()} />
         </View>
       );
     }
     case 'track':
       return (
-        <View>
-          <Text>Order {state.order?.orderNumber}</Text>
-          <Text accessibilityRole="header">{state.order?.status}</Text>
-          <Button title="Back" onPress={() => model.backToBrowse()} />
+        <View style={{ flex: 1 }}>
+          <Title>Order {state.order?.orderNumber}</Title>
+          <Muted>Live status</Muted>
+          <Card>
+            <Badge label={(state.order?.status ?? '').replace(/_/g, ' ')} />
+            <Text style={{ color: colors.muted, marginTop: 8 }}>
+              We&apos;ll update this automatically as your order progresses.
+            </Text>
+          </Card>
+          <SecondaryButton title="Back to merchants" onPress={() => model.backToBrowse()} />
         </View>
       );
   }
@@ -120,14 +153,16 @@ function PhoneScreen({ onSubmit }: { onSubmit: (phone: string) => void }): JSX.E
   const [phone, setPhone] = useState('');
   return (
     <View>
-      <Text>Enter your phone</Text>
-      <TextInput
-        accessibilityLabel="Phone"
-        keyboardType="phone-pad"
+      <Title>Welcome to Boj</Title>
+      <Muted>Sign in with your phone number</Muted>
+      <Field
+        label="Phone number"
         value={phone}
         onChangeText={setPhone}
+        placeholder="+2547…"
+        keyboardType="phone-pad"
       />
-      <Button title="Send code" onPress={() => onSubmit(phone)} />
+      <PrimaryButton title="Send code" onPress={() => onSubmit(phone)} />
     </View>
   );
 }
@@ -142,14 +177,16 @@ function OtpScreen({
   const [code, setCode] = useState('');
   return (
     <View>
-      <Text>Code sent to {phone}</Text>
-      <TextInput
-        accessibilityLabel="Code"
-        keyboardType="number-pad"
+      <Title>Enter code</Title>
+      <Muted>Sent to {phone}</Muted>
+      <Field
+        label="Verification code"
         value={code}
         onChangeText={setCode}
+        placeholder="6-digit code"
+        keyboardType="number-pad"
       />
-      <Button title="Verify" onPress={() => onSubmit(code)} />
+      <PrimaryButton title="Verify" onPress={() => onSubmit(code)} />
     </View>
   );
 }
