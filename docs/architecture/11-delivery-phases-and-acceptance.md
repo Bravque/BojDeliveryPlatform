@@ -5,6 +5,13 @@
 > build the money/order correctness core early, behind a simulated payment gateway, so the
 > riskiest logic is proven before UI polish.
 
+> **Acceptance reconciliation (2026-10-25):** boxes are now ticked to match merged + tested
+> work (PRs #1–#40). Legend: `[x]` = delivered and verified by CI/tests; `[~]` = partially met
+> (scope note inline); `[ ]` with an _(operator-run)_ note = enabling code/artifacts delivered
+> and tested in-repo, but the **real-infra execution** cannot run on the dev box (no Safaricom
+> creds, no deployed env, no managed MySQL/Redis) and remains for the operator before launch
+> (tracked in `docs/ops/go-live-checklist.md`).
+
 ## Phase 0 — Foundations & scaffolding
 **Goal:** a bootable monorepo with CI, config, DB, and no business features.
 - Monorepo (pnpm + Turborepo), shared TS/lint/format, `packages/config`, `packages/money`.
@@ -18,10 +25,10 @@
 > infrastructure for Phase 0 is MySQL + Redis + MinIO.
 
 **Acceptance:**
-- [ ] `pnpm install && turbo run build lint test` passes from a clean checkout.
-- [ ] API boots and fails fast on invalid env; `/health` returns dependency status.
-- [ ] A trivial migration applies up/down; seed loads a synthetic town.
-- [ ] CI green on an empty-but-wired PR.
+- [x] `pnpm install && turbo run build lint test` passes from a clean checkout.
+- [x] API boots and fails fast on invalid env; `/health` returns dependency status.
+- [x] A trivial migration applies up/down; seed loads a synthetic town.
+- [x] CI green on an empty-but-wired PR.
 
 ## Phase 1 — Identity, roles & authorization core
 **Goal:** authn + RBAC skeleton usable by later phases.
@@ -29,10 +36,10 @@
 - Role model + policy layer + ownership checks; audit log write path.
 
 **Acceptance:**
-- [ ] OTP flow works against mock SMS with throttling/lockout; no user enumeration.
-- [ ] Protected routes reject missing/invalid/expired tokens.
-- [ ] Policy unit tests cover role + ownership for representative actions.
-- [ ] Refresh rotation + reuse-detection tested.
+- [x] OTP flow works against mock SMS with throttling/lockout; no user enumeration.
+- [x] Protected routes reject missing/invalid/expired tokens.
+- [x] Policy unit tests cover role + ownership for representative actions.
+- [x] Refresh rotation + reuse-detection tested.
 
 ## Phase 2 — Catalogue, inventory & merchants
 **Goal:** merchants and their products exist and are browsable.
@@ -40,9 +47,9 @@
 - Public catalogue reads with zone-aware merchant filtering.
 
 **Acceptance:**
-- [ ] Merchant can manage catalogue; customer can browse only approved/open merchants.
-- [ ] Price edits bump `version`; client cannot set prices.
-- [ ] Inventory reserve/release primitives exist with a passing concurrency unit test.
+- [x] Merchant can manage catalogue; customer can browse only approved/open merchants.
+- [x] Price edits bump `version`; client cannot set prices.
+- [x] Inventory reserve/release primitives exist with a passing concurrency unit test.
 
 ## Phase 3 — Cart, pricing & order creation (no payment yet)
 **Goal:** correct, server-authoritative pricing and order snapshot.
@@ -51,10 +58,10 @@
 - Order state machine wired through `draft`/`cancelled` with history.
 
 **Acceptance:**
-- [ ] Totals computed server-side; identical inputs → identical totals; out-of-zone blocks.
-- [ ] Concurrency test: N checkouts on 1-stock product → exactly one succeeds.
-- [ ] Promotion caps/eligibility/limits enforced; never a negative total.
-- [ ] Illegal state transitions rejected; history written atomically.
+- [x] Totals computed server-side; identical inputs → identical totals; out-of-zone blocks.
+- [x] Concurrency test: N checkouts on 1-stock product → exactly one succeeds.
+- [x] Promotion caps/eligibility/limits enforced; never a negative total.
+- [x] Illegal state transitions rejected; history written atomically.
 
 ## Phase 4 — Payments (simulated) & ledger
 **Goal:** prove the entire money machine before real Daraja.
@@ -63,11 +70,11 @@
   refunds (full/partial).
 
 **Acceptance:**
-- [ ] Duplicate callback ×100 → one capture, one ledger txn, one receipt.
-- [ ] Amount-mismatch callback quarantined, never captured.
-- [ ] Timeout → status-query resolution; late-success-after-cancel → auto-refund.
-- [ ] Ledger balances across order→refund lifecycle; imbalance job clean.
-- [ ] Refund idempotency: no double refund.
+- [x] Duplicate callback ×100 → one capture, one ledger txn, one receipt.
+- [x] Amount-mismatch callback quarantined, never captured.
+- [x] Timeout → status-query resolution; late-success-after-cancel → auto-refund.
+- [x] Ledger balances across order→refund lifecycle; imbalance job clean.
+- [x] Refund idempotency: no double refund.
 
 ## Phase 5 — Rider onboarding, assignment & delivery
 **Goal:** get an order from `ready_for_pickup` to `delivered`.
@@ -76,10 +83,10 @@
   accrual.
 
 **Acceptance:**
-- [ ] K simultaneous accepts → exactly one winner, others `409`.
-- [ ] Offer expiry re-offers; exhaustion escalates to ops.
-- [ ] Delivery fee (customer) and rider fee (earnings) stored separately and snapshotted.
-- [ ] Full happy-path order lifecycle passes end-to-end (API, simulated payment).
+- [x] K simultaneous accepts → exactly one winner, others `409`.
+- [x] Offer expiry re-offers; exhaustion escalates to ops.
+- [x] Delivery fee (customer) and rider fee (earnings) stored separately and snapshotted.
+- [x] Full happy-path order lifecycle passes end-to-end (API, simulated payment).
 
 ## Phase 6 — Realtime, notifications & client apps (MVP)
 **Goal:** usable apps on top of the proven backend.
@@ -88,9 +95,11 @@
 - Customer app, rider app, merchant dashboard MVP flows; admin dashboard core.
 
 **Acceptance:**
-- [ ] Socket rooms authorized; unauthorized joins rejected.
-- [ ] Each persona completes its critical journey in E2E tests.
-- [ ] Realtime payloads are notifications only; clients re-fetch canonical state.
+- [x] Socket rooms authorized; unauthorized joins rejected.
+- [~] Each persona completes its critical journey in E2E tests. _(Partial — Phase 6 MVP scope
+  shipped **one** thin client, `merchant-web`, with a vitest+RTL critical-journey test;
+  customer/rider native apps and Playwright-in-browser E2E are post-MVP, deferred.)_
+- [x] Realtime payloads are notifications only; clients re-fetch canonical state.
 
 ## Phase 7 — Settlements, payouts & admin/reporting
 **Goal:** operators can run the business and get everyone paid.
@@ -99,9 +108,9 @@
   disputes/overrides with audit.
 
 **Acceptance:**
-- [ ] Settlement math (gross − commission − refunds) matches ledger; idempotent payouts.
-- [ ] Reconciliation surfaces injected mismatches without auto-moving money.
-- [ ] Every override/refund/payout is audited with actor + reason + before/after.
+- [x] Settlement math (gross − commission − refunds) matches ledger; idempotent payouts.
+- [x] Reconciliation surfaces injected mismatches without auto-moving money.
+- [x] Every override/refund/payout is audited with actor + reason + before/after.
 
 ## Phase 8 — Production hardening & Daraja go-live
 **Goal:** flip from simulated to production safely.
@@ -109,10 +118,23 @@
   drill performed**; runbooks; security review; DPA compliance sign-off.
 
 **Acceptance:**
-- [ ] Switching `PAYMENT_PROVIDER` to Daraja requires no changes outside the adapter.
+- [x] Switching `PAYMENT_PROVIDER` to Daraja requires no changes outside the adapter.
+  _(Code-verified: `buildGateway()` selects `DarajaGateway`/`DarajaPayoutGateway` by
+  `PAYMENT_PROVIDER` with no other change; adapters tested vs a local fake-Daraja server. A live
+  sandbox/prod run is operator-run — see `docs/ops/runbooks/daraja-cutover.md`.)_
 - [ ] Load test meets latency/throughput targets at 10× launch volume projection.
+  _(Operator-run — k6 harness delivered at `scripts/load-test/order-flow.js`; run vs staging and
+  record the summary.)_
 - [ ] A real restore drill has been executed and its result recorded.
+  _(Operator-run — `scripts/backup-mysql.sh` + `scripts/restore-drill.sh` delivered; needs real
+  MySQL. Record result in `docs/ops/runbooks/restore.md` §Record.)_
 - [ ] Security review and data-protection checklist signed off.
+  _(Operator-run — `docs/ops/security-review-checklist.md` + `docs/ops/data-protection-dpa-checklist.md`
+  delivered; need human + DPO/Legal signatures.)_
+
+> **Known go-live gap:** merchant B2C payout destination is not modelled (rider payouts work via
+> `user.phone_e164`); a merchant payout errors "no destination" under Daraja. Resolve or document
+> a workaround before launch — tracked in `docs/ops/go-live-checklist.md`.
 
 ---
 
