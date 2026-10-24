@@ -21,10 +21,12 @@
   "dependencies": {
     "@boj/config": "workspace:*",
     "@boj/money": "workspace:*",
+    "@socket.io/redis-adapter": "^8.3.0",
     "argon2": "catalog:",
     "express": "catalog:",
     "express-rate-limit": "^8.7.1",
     "helmet": "^8.3.0",
+    "ioredis": "^6.0.0",
     "jsonwebtoken": "catalog:",
     "knex": "catalog:",
     "mysql2": "catalog:",

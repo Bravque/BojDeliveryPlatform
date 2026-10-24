@@ -51,6 +51,7 @@ import { DarajaPayoutGateway } from './payouts/daraja/daraja-payout-gateway';
 import { buildSecurityCredential } from './payouts/daraja/security-credential';
 import { createReportService } from './reports/report-service';
 import { createKnexReportsRepo } from './reports/repo';
+import { createScheduler } from './platform/scheduler/scheduler';
 import { createPresenceService } from './riders/presence-service';
 import { createRiderService } from './riders/rider-service';
 import { createKnexRiderRepo } from './riders/repo';
@@ -397,14 +398,38 @@ function main(): void {
     },
     resolver: realtimeResolver,
     logger,
+    redisUrl: env.REDIS_URL,
   });
   lateGateway.bind(realtime.gateway); // domain events now reach live sockets
+
+  // Background jobs (single instance only — see SCHEDULER_ENABLED). Both operations are idempotent.
+  const scheduler = env.SCHEDULER_ENABLED
+    ? createScheduler({
+        logger,
+        jobs: [
+          {
+            name: 'reconcile-stale-payments',
+            intervalMs: env.RECONCILE_INTERVAL_SEC * 1000,
+            run: () =>
+              payments.reconcileService.reconcileStalePayments(env.RECONCILE_OLDER_THAN_SEC),
+          },
+          {
+            name: 'assignment-expiry-tick',
+            intervalMs: env.OFFER_TICK_INTERVAL_SEC * 1000,
+            run: () => delivery.assignmentService.tick(),
+          },
+        ],
+      })
+    : null;
+
   const server = httpServer.listen(env.PORT, () => {
     logger.info({ port: env.PORT, env: env.NODE_ENV }, 'API listening (HTTP + realtime)');
+    scheduler?.start();
   });
 
   const shutdown = (signal: string): void => {
     logger.info({ signal }, 'Shutting down');
+    scheduler?.stop();
     server.close(() => {
       void db.destroy().finally(() => process.exit(0));
     });

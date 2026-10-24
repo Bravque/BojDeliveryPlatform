@@ -1,4 +1,4 @@
-import { envPort, parseEnv } from '@boj/config';
+import { envBool, envPort, parseEnv } from '@boj/config';
 import { z } from 'zod';
 
 const envSchema = z.object({
@@ -50,6 +50,14 @@ const envSchema = z.object({
   DARAJA_SECURITY_CERT: z.string().optional(), // Safaricom public cert (PEM)
   DARAJA_B2C_RESULT_URL: z.string().url().optional(),
   DARAJA_B2C_TIMEOUT_URL: z.string().url().optional(),
+  // In-process scheduler (Phase 8, doc 10). Enable on EXACTLY ONE instance. Drives the stale-payment
+  // reconcile sweep + the assignment-offer expiry tick; both operations are idempotent.
+  SCHEDULER_ENABLED: envBool().default(false),
+  RECONCILE_INTERVAL_SEC: z.coerce.number().int().min(5).max(86_400).default(120),
+  RECONCILE_OLDER_THAN_SEC: z.coerce.number().int().min(5).max(86_400).default(120),
+  OFFER_TICK_INTERVAL_SEC: z.coerce.number().int().min(1).max(3600).default(15),
+  // Realtime horizontal scale: when set, Socket.IO fans out across instances via this Redis.
+  REDIS_URL: z.string().optional(),
 });
 
 /** Config required once a Daraja provider is selected (money-in STK + money-out B2C/reversal). */
