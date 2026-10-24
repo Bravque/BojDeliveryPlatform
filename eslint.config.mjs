@@ -40,4 +40,12 @@ export default tseslint.config(
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
   },
+  {
+    // React Native / Expo app (customer-app): RN runtime globals (fetch/console/timers) + JSX.
+    files: ['apps/customer-app/**/*.{ts,tsx}'],
+    languageOptions: {
+      globals: { ...globals.node, ...globals.browser },
+      parserOptions: { ecmaFeatures: { jsx: true } },
+    },
+  },
 );
