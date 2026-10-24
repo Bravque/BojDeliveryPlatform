@@ -5,7 +5,15 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/node_modules/**', '**/.turbo/**', '**/coverage/**'],
+    // scripts/load-test holds k6 scripts that run under the k6 runtime (k6/* imports,
+    // __ENV/__VU globals) — not Node, so our Node/TS lint config does not apply.
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      '**/.turbo/**',
+      '**/coverage/**',
+      'scripts/load-test/**',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

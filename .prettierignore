@@ -5,3 +5,5 @@
 pnpm-lock.yaml
 # Markdown (incl. architecture docs) is hand-formatted; leave it untouched.
 **/*.md
+# k6 load-test scripts run under the k6 runtime, not Node; keep them out of the JS formatter.
+scripts/load-test/**
