@@ -31,12 +31,15 @@ const summary: MerchantSummary = {
   isOpen: false,
   prepMinutes: 20,
   commissionBps: 1000,
+  payoutPhoneE164: null,
 };
 
 const merchantService: MerchantService = {
   createMerchant: () => Promise.resolve(summary),
   approveMerchant: () => Promise.resolve({ ...summary, status: 'approved' }),
   suspendMerchant: () => Promise.resolve({ ...summary, status: 'suspended' }),
+  setPayoutDestination: (_actor, _ulid, phone) =>
+    Promise.resolve({ ...summary, payoutPhoneE164: `+254${phone.replace(/\D/g, '').slice(-9)}` }),
   addOwner: () => Promise.resolve(summary),
 };
 
@@ -136,5 +139,30 @@ describe('merchant approve / suspend / owners', () => {
       .set('Authorization', `Bearer ${adminAuth()}`)
       .send({ userUlid: 'OWNER-ULID' });
     expect(res.status).toBe(200);
+  });
+
+  it('sets a payout destination (200)', async () => {
+    const res = await request(app())
+      .post('/api/v1/admin/merchants/M1/payout-destination')
+      .set('Authorization', `Bearer ${adminAuth()}`)
+      .send({ phone: '0712345678' });
+    expect(res.status).toBe(200);
+    expect(res.body.payoutPhoneE164).toBe('+254712345678');
+  });
+
+  it('forbids a customer from setting a payout destination (403)', async () => {
+    const res = await request(app())
+      .post('/api/v1/admin/merchants/M1/payout-destination')
+      .set('Authorization', `Bearer ${tokenFor(['customer'])}`)
+      .send({ phone: '0712345678' });
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects a missing phone with 422', async () => {
+    const res = await request(app())
+      .post('/api/v1/admin/merchants/M1/payout-destination')
+      .set('Authorization', `Bearer ${adminAuth()}`)
+      .send({});
+    expect(res.status).toBe(422);
   });
 });

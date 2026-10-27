@@ -18,10 +18,10 @@ deployed env, no managed MySQL/Redis) and must be executed + recorded before lau
 
 ## Explicit go / no-go items
 
-- [ ] **Merchant B2C payout destination** — **not modelled** (payee MSISDN resolves from
-      `user.phone_e164`, riders only). Merchant payouts error "no destination" under Daraja.
-      **Decision required:** add a payout-destination field *or* settle merchants out-of-band at
-      launch and document it. (`runbooks/daraja-cutover.md` §4, `runbooks/failed-payout.md`.)
+- [ ] **Merchant B2C payout destination** — **modelled** (`merchant.payout_phone_e164`, migration
+      `0023`); set per approved merchant via `POST /api/v1/admin/merchants/:ulid/payout-destination`
+      **before its first Daraja payout** (a merchant with none still fails execute with "no
+      destination"). (`runbooks/daraja-cutover.md` §4, `runbooks/failed-payout.md`.)
 - [ ] Scheduler enabled on **exactly one** instance (`runbooks/scheduler-and-redis.md`).
 - [ ] `REDIS_URL` set if running >1 app instance (realtime fan-out).
 - [ ] Secrets in the secret manager; `DARAJA_WEBHOOK_IP_ALLOWLIST` set in prod.

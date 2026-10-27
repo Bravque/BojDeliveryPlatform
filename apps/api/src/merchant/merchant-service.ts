@@ -1,5 +1,6 @@
 import type { AuditService } from '../auth/audit-service';
 import { newUlid } from '../auth/crypto';
+import { normalizeKenyanPhone } from '../auth/phone';
 import { badRequest, notFound } from '../http/errors';
 import type { MerchantCategory, MerchantRecord, MerchantRepo } from './repo';
 
@@ -26,6 +27,8 @@ export interface MerchantSummary {
   isOpen: boolean;
   prepMinutes: number;
   commissionBps: number;
+  /** Canonical E.164 M-Pesa payout destination, or null when none is on file. */
+  payoutPhoneE164: string | null;
 }
 
 export interface MerchantServiceDeps {
@@ -42,6 +45,7 @@ function toSummary(m: MerchantRecord): MerchantSummary {
     isOpen: m.isOpen,
     prepMinutes: m.prepMinutes,
     commissionBps: m.commissionBps,
+    payoutPhoneE164: m.payoutPhoneE164,
   };
 }
 
@@ -156,6 +160,27 @@ export function createMerchantService(deps: MerchantServiceDeps) {
     return toSummary({ ...merchant, status: 'suspended' });
   }
 
+  async function setPayoutDestination(
+    actor: Actor,
+    merchantUlid: string,
+    phone: string,
+  ): Promise<MerchantSummary> {
+    const merchant = await requireMerchant(merchantUlid);
+    const phoneE164 = normalizeKenyanPhone(phone);
+    if (phoneE164 === null) {
+      throw badRequest('Invalid phone number', [{ field: 'phone', issue: 'not a Kenyan mobile' }]);
+    }
+    await repo.setMerchantPayoutPhone(merchant.id, phoneE164);
+    await audit(
+      actor,
+      'merchant.payout_destination.set',
+      merchant.id,
+      { payoutPhoneE164: merchant.payoutPhoneE164 },
+      { payoutPhoneE164: phoneE164 },
+    );
+    return toSummary({ ...merchant, payoutPhoneE164: phoneE164 });
+  }
+
   async function addOwner(
     actor: Actor,
     merchantUlid: string,
@@ -168,7 +193,7 @@ export function createMerchantService(deps: MerchantServiceDeps) {
     return toSummary(merchant);
   }
 
-  return { createMerchant, approveMerchant, suspendMerchant, addOwner };
+  return { createMerchant, approveMerchant, suspendMerchant, setPayoutDestination, addOwner };
 }
 
 export type MerchantService = ReturnType<typeof createMerchantService>;

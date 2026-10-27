@@ -35,6 +35,7 @@ class FakeMerchantRepo implements MerchantRepo {
       isOpen: false,
       prepMinutes: input.prepMinutes,
       commissionBps: input.commissionBps,
+      payoutPhoneE164: null,
       createdAt: new Date(),
     };
     this.merchants.push(m);
@@ -47,6 +48,13 @@ class FakeMerchantRepo implements MerchantRepo {
     const m = this.merchants.find((x) => x.id === merchantId);
     if (m) {
       m.status = status;
+    }
+    return Promise.resolve();
+  }
+  setMerchantPayoutPhone(merchantId: number, phoneE164: string | null): Promise<void> {
+    const m = this.merchants.find((x) => x.id === merchantId);
+    if (m) {
+      m.payoutPhoneE164 = phoneE164;
     }
     return Promise.resolve();
   }
@@ -148,6 +156,30 @@ describe('merchant onboarding service', () => {
     const { svc } = setup();
     expect(await thrownStatus(svc.approveMerchant(ADMIN, 'nope'))).toBe(404);
     expect(await thrownStatus(svc.suspendMerchant(ADMIN, 'nope', 'x'))).toBe(404);
+  });
+
+  it('sets a merchant payout destination, normalizing to E.164, and audits the change', async () => {
+    const { repo, svc, recorded } = setup();
+    const created = await svc.createMerchant(ADMIN, baseInput);
+    const updated = await svc.setPayoutDestination(ADMIN, created.ulid, '0712 345 678');
+    expect(updated.payoutPhoneE164).toBe('+254712345678');
+    expect(repo.merchants[0]?.payoutPhoneE164).toBe('+254712345678');
+    expect(recorded.at(-1)).toMatchObject({
+      action: 'merchant.payout_destination.set',
+      entityType: 'merchant',
+      after: { payoutPhoneE164: '+254712345678' },
+    });
+  });
+
+  it('rejects an invalid payout phone with 400', async () => {
+    const { svc } = setup();
+    const created = await svc.createMerchant(ADMIN, baseInput);
+    expect(await thrownStatus(svc.setPayoutDestination(ADMIN, created.ulid, '12345'))).toBe(400);
+  });
+
+  it('returns 404 setting a payout destination on an unknown merchant', async () => {
+    const { svc } = setup();
+    expect(await thrownStatus(svc.setPayoutDestination(ADMIN, 'nope', '0712345678'))).toBe(404);
   });
 
   it('adds a staff member and grants the merchant_staff role', async () => {

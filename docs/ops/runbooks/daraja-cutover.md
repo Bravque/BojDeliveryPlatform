@@ -45,12 +45,20 @@ the shortcode. They must be public HTTPS and match the env values exactly.
    `POST /api/v1/webhooks/mpesa/b2c-result` → payout `paid`, `rider_payable` cleared,
    `payout_event` row written.
 
-## 4. Known gap — merchant B2C destination
+## 4. Merchant B2C destination — set before first payout
 
-**Merchant** payout destination (MSISDN/till) is **not modelled** — B2C resolves the payee from
-`user.phone_e164`, which only exists for riders. Executing a **merchant** payout under Daraja will
-error "no destination". Treat merchant payouts as **blocked** until a payout-destination field is
-added, or settle merchants out-of-band. This is an explicit go/no-go item (`go-live-checklist.md`).
+**Merchant** payout destination is modelled as `merchant.payout_phone_e164` (migration `0023`),
+parallel to riders' `user.phone_e164`. Set it per approved merchant **before** executing that
+merchant's first Daraja payout:
+
+```
+POST /api/v1/admin/merchants/:ulid/payout-destination   { "phone": "0712345678" }   # admin/ops
+```
+
+The number is normalised to canonical E.164 and `getPayeeMsisdn('merchant', …)` resolves it. A
+merchant with **none on file** still errors "no destination" on execute (the payout stays
+`approved` and is retryable once set) — so confirm every merchant due a payout has one. This is an
+explicit go/no-go item (`go-live-checklist.md`).
 
 ## 5. Production flip
 

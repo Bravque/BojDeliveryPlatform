@@ -28,12 +28,17 @@ the payout by `external_ref` (the Daraja `ConversationID`), and idempotently con
   invalid payee MSISDN, insufficient float) and re-generate/re-execute the payout for that
   payee+period (generation is idempotent per payee+period).
 
-## Known gap — merchant destination
+## Merchant with no destination on file
 
-A **merchant** payout has **no destination modelled** (payee MSISDN is resolved from
-`user.phone_e164`, riders only). A merchant B2C execute errors "no destination". Until a
-payout-destination field exists, settle merchants out-of-band and record it. See
-`daraja-cutover.md` §4 and `go-live-checklist.md`.
+A **merchant** payout resolves its payee MSISDN from `merchant.payout_phone_e164`. If none is set,
+a Daraja B2C execute errors "no destination" and the payout stays `approved` (retryable). Fix by
+setting it, then re-execute:
+
+```
+POST /api/v1/admin/merchants/:ulid/payout-destination   { "phone": "0712345678" }   # admin/ops
+```
+
+See `daraja-cutover.md` §4 and `go-live-checklist.md`.
 
 ## Verify
 

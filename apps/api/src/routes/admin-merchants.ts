@@ -21,6 +21,7 @@ const createSchema = z.object({
   ownerUserUlid: z.string().min(1).optional(),
 });
 const suspendSchema = z.object({ reason: z.string().min(1).max(255) });
+const payoutDestinationSchema = z.object({ phone: z.string().min(1).max(20) });
 const addOwnerSchema = z.object({
   userUlid: z.string().min(1),
   role: z.enum(['owner', 'staff']).default('owner'),
@@ -64,6 +65,17 @@ export function merchantAdminRouter(
       res
         .status(200)
         .json(await merchantService.suspendMerchant(actorOf(req), req.params.ulid!, reason));
+    }),
+  );
+
+  router.post(
+    '/admin/merchants/:ulid/payout-destination',
+    ...adminOnly,
+    asyncHandler(async (req, res) => {
+      const { phone } = payoutDestinationSchema.parse(req.body);
+      res
+        .status(200)
+        .json(await merchantService.setPayoutDestination(actorOf(req), req.params.ulid!, phone));
     }),
   );
 

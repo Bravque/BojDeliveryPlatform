@@ -38,6 +38,7 @@ const merchantService: MerchantService = {
   createMerchant: () => Promise.reject(new Error('not used')),
   approveMerchant: () => Promise.reject(new Error('not used')),
   suspendMerchant: () => Promise.reject(new Error('not used')),
+  setPayoutDestination: () => Promise.reject(new Error('not used')),
   addOwner: () => Promise.reject(new Error('not used')),
 };
 
