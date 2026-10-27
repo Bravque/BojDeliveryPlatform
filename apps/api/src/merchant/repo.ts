@@ -21,6 +21,8 @@ export interface MerchantRecord {
   isOpen: boolean;
   prepMinutes: number;
   commissionBps: number;
+  /** Canonical E.164 M-Pesa number paid for merchant B2C payouts; null when none is on file. */
+  payoutPhoneE164: string | null;
   createdAt: Date;
 }
 
@@ -39,6 +41,8 @@ export interface MerchantRepo {
   createMerchant(input: CreateMerchantInput): Promise<MerchantRecord>;
   findMerchantByUlid(ulid: string): Promise<MerchantRecord | null>;
   setMerchantStatus(merchantId: number, status: MerchantStatus): Promise<void>;
+  /** Set (or clear, with null) the merchant's canonical-E.164 B2C payout destination. */
+  setMerchantPayoutPhone(merchantId: number, phoneE164: string | null): Promise<void>;
   addMerchantUser(merchantId: number, userId: number, role: MerchantUserRole): Promise<void>;
   /** Idempotently grant a global role (user_role) so the policy layer recognizes the user. */
   grantGlobalRole(userId: number, roleCode: string): Promise<void>;
@@ -54,6 +58,7 @@ interface MerchantRowDb {
   is_open: number | boolean;
   prep_minutes: number | string;
   commission_bps: number | string;
+  payout_phone_e164: string | null;
   created_at: string | Date;
 }
 
@@ -68,6 +73,7 @@ function mapMerchant(row: MerchantRowDb): MerchantRecord {
     isOpen: Boolean(row.is_open),
     prepMinutes: Number(row.prep_minutes),
     commissionBps: Number(row.commission_bps),
+    payoutPhoneE164: row.payout_phone_e164 ?? null,
     createdAt: new Date(row.created_at),
   };
 }
@@ -110,6 +116,10 @@ export function createKnexMerchantRepo(db: Knex): MerchantRepo {
 
     async setMerchantStatus(merchantId, status) {
       await db('merchant').where({ id: merchantId }).update({ status });
+    },
+
+    async setMerchantPayoutPhone(merchantId, phoneE164) {
+      await db('merchant').where({ id: merchantId }).update({ payout_phone_e164: phoneE164 });
     },
 
     async addMerchantUser(merchantId, userId, role) {

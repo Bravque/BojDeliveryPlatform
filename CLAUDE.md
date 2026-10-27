@@ -58,8 +58,14 @@ For each task:
 > `docs/architecture/decisions/decision-log.md` + ADRs. Repo:
 > https://github.com/Bravque/BojDeliveryPlatform (public).
 
-**Current status (2026-10-25):** **Phases 0–7 complete & merged**; **Phase 8 code complete — all
+**Current status (2026-10-27):** **Phases 0–7 complete & merged**; **Phase 8 code complete — all
 five increments landed; STOP for final Phase 8 review** (remaining go-live steps are operator-run).
+**Go-live gap closed (2026-10-27, branch `merchant-payout-destination`):** merchant B2C payout
+destination now modelled — `merchant.payout_phone_e164` (migration `0023`), admin/ops endpoint
+`POST /admin/merchants/:ulid/payout-destination` (normalises to E.164), and
+`getPayeeMsisdn('merchant', …)` resolves it (parity with riders). A merchant with none set still
+fails a Daraja payout by design (retryable after data entry); no new decision. Docs updated
+(acceptance §Phase-8, go-live-checklist, daraja-cutover §4, failed-payout).
 Phase 7 settlements/payouts/reports via PRs #33–#35 — dual-sign payouts D16, on-demand generation,
 simulated B2C, read-only reports + ledger overview. **Phase 8 — Production hardening & Daraja
 go-live (final phase)** (plan locked 2026-10-21 — Daraja adapters behind the existing gateway interfaces, tested

@@ -62,7 +62,7 @@ export interface PayoutsRepo {
   lockPayoutByUlid(ulid: string): Promise<PayoutRecord | null>;
   /** Load + lock a payout by its provider conversation id (B2C `external_ref`). */
   lockPayoutByExternalRef(externalRef: string): Promise<PayoutRecord | null>;
-  /** Payee M-Pesa MSISDN: rider → user phone; merchant → not modelled yet (null). */
+  /** Payee M-Pesa MSISDN: rider → user phone; merchant → merchant.payout_phone_e164. Null = none on file. */
   getPayeeMsisdn(payeeType: PayeeType, payeeId: number): Promise<string | null>;
   /** Persist a raw B2C result event; returns false when `dedupeKey` already exists (replay). */
   insertPayoutEventDedup(input: {
@@ -203,11 +203,13 @@ export function createKnexPayoutsRepo(exec: Knex): PayoutsRepo {
     },
 
     async getPayeeMsisdn(payeeType, payeeId) {
-      // Rider payee_id = rider_profile.user_id = user.id → the rider's M-Pesa number.
-      // Merchant payout destinations are not modelled yet (settled off-platform / future field).
-      if (payeeType !== 'rider') {
-        return null;
+      if (payeeType === 'merchant') {
+        // Merchant payee_id = merchant.id → the merchant's configured B2C destination (admin-set).
+        const row = (await exec('merchant').where({ id: payeeId }).first('payout_phone_e164')) as
+          { payout_phone_e164: string | null } | undefined;
+        return row?.payout_phone_e164 ?? null;
       }
+      // Rider payee_id = rider_profile.user_id = user.id → the rider's M-Pesa number.
       const row = (await exec('user').where({ id: payeeId }).first('phone_e164')) as
         { phone_e164: string } | undefined;
       return row?.phone_e164 ?? null;

@@ -132,9 +132,12 @@
   _(Operator-run — `docs/ops/security-review-checklist.md` + `docs/ops/data-protection-dpa-checklist.md`
   delivered; need human + DPO/Legal signatures.)_
 
-> **Known go-live gap:** merchant B2C payout destination is not modelled (rider payouts work via
-> `user.phone_e164`); a merchant payout errors "no destination" under Daraja. Resolve or document
-> a workaround before launch — tracked in `docs/ops/go-live-checklist.md`.
+> **Merchant B2C payout destination (closed):** merchants now carry a `payout_phone_e164`
+> (migration `0023`), set by admin/ops via `POST /api/v1/admin/merchants/:ulid/payout-destination`;
+> `getPayeeMsisdn('merchant', …)` resolves it (parity with riders' `user.phone_e164`). A merchant
+> with no destination still (correctly) fails a Daraja payout — now fixable by data entry rather
+> than unmodellable. **Operator action:** set each approved merchant's destination before its first
+> Daraja payout (`docs/ops/go-live-checklist.md`).
 
 ---
 
