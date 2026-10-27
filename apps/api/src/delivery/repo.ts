@@ -51,6 +51,8 @@ export interface RiderOfferView {
 
 export interface DeliveryRepo {
   findUserIdByUlid(ulid: string): Promise<number | null>;
+  /** Resolve a user's public ulid from its numeric id (to target a rider's realtime room). */
+  findUserUlidById(userId: number): Promise<string | null>;
 
   // --- assignment context + candidates ---
   getAssignmentContext(orderUlid: string): Promise<AssignmentContext | null>;
@@ -156,6 +158,12 @@ export function createKnexDeliveryRepo(exec: Knex): DeliveryRepo {
       const row = (await exec('user').where({ ulid }).first('id')) as
         { id: number | string } | undefined;
       return row ? Number(row.id) : null;
+    },
+
+    async findUserUlidById(userId) {
+      const row = (await exec('user').where({ id: userId }).first('ulid')) as
+        { ulid: string } | undefined;
+      return row?.ulid ?? null;
     },
 
     async getAssignmentContext(orderUlid) {

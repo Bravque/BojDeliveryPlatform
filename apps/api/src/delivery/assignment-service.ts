@@ -16,6 +16,10 @@ export interface OfferResult {
   offered: boolean;
   offerId?: number;
   riderId?: number;
+  /** Set when offered — the pushed rider's ulid, the order ulid, and the offer deadline (ISO). */
+  riderUlid?: string;
+  orderUlid?: string;
+  expiresAt?: string;
   reason?: string;
 }
 
@@ -100,11 +104,32 @@ export function createAssignmentService(deps: AssignmentServiceDeps) {
       riderId: chosen,
       expiresAt,
     });
-    return { offered: true, offerId, riderId: chosen };
+    const riderUlid = (await delivery.findUserUlidById(chosen)) ?? undefined;
+    return {
+      offered: true,
+      offerId,
+      riderId: chosen,
+      riderUlid,
+      orderUlid,
+      expiresAt: expiresAt.toISOString(),
+    };
   }
 
-  function offerForOrder(orderUlid: string): Promise<OfferResult> {
-    return withTransaction(({ delivery }) => offerNextTx(delivery, orderUlid));
+  /** After the offer transaction commits, push the offer to the chosen rider (best-effort). */
+  function emitOffer(result: OfferResult): void {
+    if (result.offered && result.riderUlid && result.orderUlid && result.expiresAt) {
+      events.riderOffered(result.riderUlid, {
+        offerId: result.offerId!,
+        orderUlid: result.orderUlid,
+        expiresAt: result.expiresAt,
+      });
+    }
+  }
+
+  async function offerForOrder(orderUlid: string): Promise<OfferResult> {
+    const result = await withTransaction(({ delivery }) => offerNextTx(delivery, orderUlid));
+    emitOffer(result); // after commit — best-effort
+    return result;
   }
 
   async function requireRiderUserId(orders: OrdersRepo, actor: Actor): Promise<number> {
@@ -185,7 +210,7 @@ export function createAssignmentService(deps: AssignmentServiceDeps) {
 
   /** Decline an offer and immediately offer the next candidate. */
   async function declineOffer(actor: Actor, offerId: number): Promise<OfferResult> {
-    return withTransaction(async ({ delivery, orders }) => {
+    const result = await withTransaction(async ({ delivery, orders }) => {
       const riderUserId = await requireRiderUserId(orders, actor);
       const peek = await delivery.findOfferById(offerId);
       if (!peek || peek.riderId !== riderUserId) {
@@ -198,6 +223,8 @@ export function createAssignmentService(deps: AssignmentServiceDeps) {
       await delivery.markOfferStatus(offerId, 'declined', new Date());
       return offerNextTx(delivery, peek.orderUlid);
     });
+    emitOffer(result); // push the re-offer to the next rider, after commit — best-effort
+    return result;
   }
 
   /** List the caller's live (open, unexpired) offers. Read-only — expiry is driven by the tick. */

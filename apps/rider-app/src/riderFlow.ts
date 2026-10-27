@@ -40,6 +40,8 @@ export interface RiderModel {
   goOnline(): Promise<void>;
   goOffline(): Promise<void>;
   refreshOffers(): Promise<void>;
+  /** Silent re-fetch on a realtime `offer.new` push (no busy/error toggling — notifications only). */
+  onOfferPush(): Promise<void>;
   acceptOffer(offerId: number): Promise<void>;
   pickup(): Promise<void>;
   startDelivery(): Promise<void>;
@@ -127,6 +129,18 @@ export function createRiderModel(api: ApiClient): RiderModel {
         return;
       }
       await run(async () => ({ offers: await api.listOffers(token) }), 'Could not load offers');
+    },
+
+    async onOfferPush() {
+      // Only meaningful while signed in and online; stay quiet (no busy/error) like the push it is.
+      if (!state.token || !state.online) {
+        return;
+      }
+      try {
+        set({ offers: await api.listOffers(state.token) });
+      } catch {
+        // A failed nudge-refresh keeps the current offers; the next push or manual refresh retries.
+      }
     },
 
     async acceptOffer(offerId) {

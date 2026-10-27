@@ -104,6 +104,10 @@ export function createNotificationDispatcher(
         logger.warn({ err, orderUlid, toStatus }, 'notification dispatch failed'),
       );
     },
+    riderOffered() {
+      // Rider offers are delivered via the realtime push (`offer.new`); a device-push channel
+      // for offers is a future enhancement, so this dispatcher is intentionally a no-op here.
+    },
     handle,
   };
 }

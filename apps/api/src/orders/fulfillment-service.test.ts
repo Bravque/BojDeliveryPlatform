@@ -47,7 +47,10 @@ function setup(opts: { status?: OrderStatus; staff?: string[] } = {}) {
   const emitted: Array<{ orderUlid: string; toStatus: string }> = [];
   const svc = createFulfillmentService({
     withTransaction: (work) => work(repo),
-    events: { orderStatusChanged: (orderUlid, toStatus) => emitted.push({ orderUlid, toStatus }) },
+    events: {
+      orderStatusChanged: (orderUlid, toStatus) => emitted.push({ orderUlid, toStatus }),
+      riderOffered: () => {},
+    },
   });
   return { svc, order, history, emitted };
 }
