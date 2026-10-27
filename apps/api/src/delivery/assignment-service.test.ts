@@ -32,6 +32,8 @@ function makeWorld(over: { candidates?: CandidateRow[] } = {}) {
 
   const delivery = {
     findUserIdByUlid: (ulid: string) => Promise.resolve(usersByUlid.get(ulid) ?? null),
+    findUserUlidById: (id: number) =>
+      Promise.resolve([...usersByUlid.entries()].find(([, v]) => v === id)?.[0] ?? null),
     getAssignmentContext: (ulid: string) =>
       Promise.resolve(
         ulid === order.ulid
@@ -150,12 +152,18 @@ function makeWorld(over: { candidates?: CandidateRow[] } = {}) {
     },
   } as unknown as OrdersRepo;
 
+  const offersEmitted: Array<{ riderUlid: string; offer: { offerId: number; orderUlid: string } }> =
+    [];
   const svc = createAssignmentService({
     readRepo: delivery,
     withTransaction: (work) => work({ delivery, orders }),
     config: CONFIG,
+    events: {
+      orderStatusChanged: () => {},
+      riderOffered: (riderUlid, offer) => offersEmitted.push({ riderUlid, offer }),
+    },
   });
-  return { svc, order, offers, deliveries, history };
+  return { svc, order, offers, deliveries, history, offersEmitted };
 }
 
 const RIDER10: Actor = { ulid: 'rider10', roles: ['rider'] };
@@ -175,6 +183,23 @@ describe('assignment service — offerNext', () => {
     expect(r.offered).toBe(true);
     expect(r.riderId).toBe(10);
     expect(w.offers).toHaveLength(1);
+  });
+
+  it('pushes offer.new to the chosen rider after the offer commits', async () => {
+    const w = makeWorld();
+    const r = await w.svc.offerForOrder('ORD1');
+    expect(w.offersEmitted).toHaveLength(1);
+    expect(w.offersEmitted[0]).toMatchObject({
+      riderUlid: 'rider10',
+      offer: { offerId: r.offerId, orderUlid: 'ORD1' },
+    });
+    expect(typeof w.offersEmitted[0]!.offer.offerId).toBe('number');
+  });
+
+  it('does not push when no candidate is available', async () => {
+    const w = makeWorld({ candidates: [] });
+    await w.svc.offerForOrder('ORD1');
+    expect(w.offersEmitted).toHaveLength(0);
   });
 
   it('does not offer an order that is not ready', async () => {

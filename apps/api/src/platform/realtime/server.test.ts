@@ -96,4 +96,17 @@ describe('realtime socket server', () => {
     const socket = await connect(tokenFor('STRANGER', ['customer']));
     expect(await join(socket, 'order:ORD1')).toMatchObject({ ok: false, error: 'forbidden' });
   });
+
+  it('auto-joins a rider to its personal room so offer.new reaches it without an explicit join', async () => {
+    const socket = await connect(tokenFor('RIDER1', ['rider']));
+    const received = new Promise<unknown>((resolve) => socket.on('offer.new', resolve));
+    // The server runs the synchronous auto-join in its connection handler; a tick avoids a race.
+    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+    realtime.gateway.emitRider('RIDER1', 'offer.new', {
+      offerId: 1,
+      orderUlid: 'ORD1',
+      expiresAt: 'x',
+    });
+    expect(await received).toMatchObject({ offerId: 1, orderUlid: 'ORD1' });
+  });
 });

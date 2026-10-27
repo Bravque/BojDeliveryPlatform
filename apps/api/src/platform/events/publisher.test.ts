@@ -95,14 +95,43 @@ describe('createRealtimeEventPublisher', () => {
     expect(spy.order).toHaveLength(1); // order room still gets status.changed
     expect(spy.merchant).toHaveLength(0);
   });
+
+  it('emits offer.new to the chosen rider room', () => {
+    const spy = spyGateway();
+    const pub = createRealtimeEventPublisher({
+      gateway: spy.gateway,
+      resolver,
+      logger: createLogger({ level: 'silent' }),
+    });
+    pub.riderOffered('RIDER1', {
+      offerId: 7,
+      orderUlid: 'ORD1',
+      expiresAt: '2026-10-27T10:00:00Z',
+    });
+    expect(spy.rider).toEqual([
+      {
+        ulid: 'RIDER1',
+        event: 'offer.new',
+        payload: { offerId: 7, orderUlid: 'ORD1', expiresAt: '2026-10-27T10:00:00Z' },
+      },
+    ]);
+  });
 });
 
 describe('combinePublishers', () => {
   it('fans an event out to every publisher', () => {
     const calls: string[] = [];
-    const a: DomainEventPublisher = { orderStatusChanged: () => calls.push('a') };
-    const b: DomainEventPublisher = { orderStatusChanged: () => calls.push('b') };
-    combinePublishers(a, b).orderStatusChanged('ORD1', 'placed');
-    expect(calls).toEqual(['a', 'b']);
+    const a: DomainEventPublisher = {
+      orderStatusChanged: () => calls.push('a'),
+      riderOffered: () => calls.push('a:offer'),
+    };
+    const b: DomainEventPublisher = {
+      orderStatusChanged: () => calls.push('b'),
+      riderOffered: () => calls.push('b:offer'),
+    };
+    const combined = combinePublishers(a, b);
+    combined.orderStatusChanged('ORD1', 'placed');
+    combined.riderOffered('RIDER1', { offerId: 1, orderUlid: 'ORD1', expiresAt: 'x' });
+    expect(calls).toEqual(['a', 'b', 'a:offer', 'b:offer']);
   });
 });

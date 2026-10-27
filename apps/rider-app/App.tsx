@@ -3,6 +3,7 @@ import { ActivityIndicator, FlatList, SafeAreaView, Text, View } from 'react-nat
 import { StatusBar } from 'expo-status-bar';
 import { type ApiClient, createHttpApiClient } from './src/api';
 import { type RiderModel, type RiderState, createRiderModel } from './src/riderFlow';
+import { type ConnectRiderSocket, makeConnectRiderSocket } from './src/socket';
 import { API_BASE_URL } from './src/config';
 import {
   Alert,
@@ -19,9 +20,10 @@ import {
 
 export interface AppProps {
   api?: ApiClient;
+  connectSocket?: ConnectRiderSocket;
 }
 
-/** Root component Expo registers — no props, always wires the real API. */
+/** Root component Expo registers — no props, always wires the real API + socket. */
 export default function App(): JSX.Element {
   return <RiderApp />;
 }
@@ -29,18 +31,28 @@ export default function App(): JSX.Element {
 /**
  * Rider app shell (MVP critical journey): phone-OTP sign-in → go online → accept a live offer →
  * pickup → start → complete with the customer's PIN. All logic lives in `createRiderModel`
- * (unit-tested); this component only renders state and binds inputs. `api` is injectable for a
- * future RN render test.
+ * (unit-tested); this component only renders state and binds inputs. `api`/`connectSocket` are
+ * injectable for a future RN render test.
  */
-export function RiderApp({ api }: AppProps = {}): JSX.Element {
+export function RiderApp({ api, connectSocket }: AppProps = {}): JSX.Element {
   const modelRef = useRef<RiderModel>();
   if (!modelRef.current) {
     modelRef.current = createRiderModel(api ?? createHttpApiClient(API_BASE_URL));
   }
   const model = modelRef.current;
+  const connect = connectSocket ?? makeConnectRiderSocket(API_BASE_URL);
 
   const [state, setState] = useState<RiderState>(model.getState());
   useEffect(() => model.subscribe(setState), [model]);
+
+  // While online, listen for offer pushes and silently re-fetch live offers on each nudge.
+  useEffect(() => {
+    if (!state.online || !state.token) {
+      return;
+    }
+    const handle = connect(state.token, () => void model.onOfferPush());
+    return () => handle.close();
+  }, [state.online, state.token, connect, model]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>

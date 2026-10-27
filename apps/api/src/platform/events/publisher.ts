@@ -7,12 +7,22 @@ import type { RealtimeGateway } from '../realtime/gateway';
  * (best-effort; a missed emit is self-healing because clients re-fetch canonical state via REST).
  * The default is a no-op so services stay decoupled from transport (and tests stay quiet).
  */
+/** A rider-offer hint pushed to a rider's room — references only; the client re-fetches offers. */
+export interface RiderOfferNotice {
+  offerId: number;
+  orderUlid: string;
+  expiresAt: string;
+}
+
 export interface DomainEventPublisher {
   orderStatusChanged(orderUlid: string, toStatus: string): void;
+  /** A time-boxed offer was made to a rider (initial offer, re-offer, or after a decline). */
+  riderOffered(riderUlid: string, offer: RiderOfferNotice): void;
 }
 
 export const noopPublisher: DomainEventPublisher = {
   orderStatusChanged() {},
+  riderOffered() {},
 };
 
 /** Fan a domain event out to several publishers (e.g. realtime + notifications). */
@@ -21,6 +31,11 @@ export function combinePublishers(...publishers: DomainEventPublisher[]): Domain
     orderStatusChanged(orderUlid, toStatus) {
       for (const p of publishers) {
         p.orderStatusChanged(orderUlid, toStatus);
+      }
+    },
+    riderOffered(riderUlid, offer) {
+      for (const p of publishers) {
+        p.riderOffered(riderUlid, offer);
       }
     },
   };
@@ -55,6 +70,10 @@ export function createRealtimeEventPublisher(
           }
         })
         .catch((err: unknown) => logger.warn({ err, orderUlid }, 'realtime merchant emit failed'));
+    },
+
+    riderOffered(riderUlid, offer) {
+      gateway.emitRider(riderUlid, 'offer.new', offer);
     },
   };
 }

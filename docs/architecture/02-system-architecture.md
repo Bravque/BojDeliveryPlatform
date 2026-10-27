@@ -108,6 +108,11 @@ Everything else uses plain REST. Socket.IO rooms are keyed by resource (`order:{
 RBAC as REST. Socket events never carry authoritative money/state; they notify, and clients
 re-fetch canonical state from REST when it matters.
 
+Events (hints only): `status.changed`→`order:{ulid}`; `order.new`/`order.updated`→`merchant:{ulid}`;
+`offer.new`→`rider:{ulid}` (a time-boxed offer was made — the rider client re-fetches `GET
+/rider/offers`). A rider **auto-joins its own `rider:{ulid}` room on connect** (a principal is always
+entitled to its personal room), so offer pushes arrive without the client knowing its own ulid.
+
 ## 5. Monorepo layout
 
 Tooling: **pnpm workspaces + Turborepo** for task orchestration and caching; shared TS

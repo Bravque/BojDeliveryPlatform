@@ -126,6 +126,37 @@ describe('rider flow — critical journey', () => {
     expect(s.offers).toEqual([]);
   });
 
+  it('onOfferPush silently re-fetches live offers when online', async () => {
+    const api = makeApi({
+      listOffers: vi
+        .fn()
+        .mockResolvedValueOnce([offer(7, 'O1')]) // initial online load
+        .mockResolvedValueOnce([offer(7, 'O1'), offer(8, 'O2')]), // after the realtime push
+    });
+    const model = createRiderModel(api);
+    await model.verifyOtp('123456');
+    await model.goOnline();
+    expect(model.getState().offers.map((o) => o.offerId)).toEqual([7]);
+
+    await model.onOfferPush();
+    const s = model.getState();
+    expect(s.offers.map((o) => o.offerId)).toEqual([7, 8]);
+    expect(s.busy).toBe(false);
+    expect(s.error).toBeNull();
+  });
+
+  it('onOfferPush is a no-op when signed out or offline', async () => {
+    const api = makeApi();
+    const model = createRiderModel(api);
+
+    await model.onOfferPush(); // signed out
+    expect(api.listOffers).not.toHaveBeenCalled();
+
+    await model.verifyOtp('123456'); // signed in but still offline
+    await model.onOfferPush();
+    expect(api.listOffers).not.toHaveBeenCalled();
+  });
+
   it('notifies subscribers on state changes', async () => {
     const api = makeApi();
     const model = createRiderModel(api);

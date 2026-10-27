@@ -60,6 +60,14 @@ export function createRealtimeServer(
   });
 
   io.on('connection', (socket) => {
+    // A rider auto-joins its own `rider:{ulid}` room so offer pushes reach it without the client
+    // needing to know its own ulid. A principal is always entitled to its personal room (parity
+    // with `authorizeJoin`), so no extra authorization is required.
+    const principal = socket.data.principal;
+    if (principal?.roles.includes('rider')) {
+      void socket.join(`rider:${principal.ulid}`);
+    }
+
     socket.on('join', (room: unknown, ack?: Ack) => {
       const principal = socket.data.principal;
       if (typeof room !== 'string' || !principal) {
