@@ -31,6 +31,13 @@ export interface DeliveryView {
   riderFeeCents: number;
 }
 
+/** Mirrors the rider profile (`GET /rider/me`). */
+export interface RiderProfile {
+  status: string;
+  vehicleType: string;
+  isOnline: boolean;
+}
+
 export interface ApiClient {
   requestOtp(phone: string): Promise<void>;
   verifyOtp(phone: string, code: string): Promise<AuthResult>;
@@ -42,6 +49,7 @@ export interface ApiClient {
   pickup(token: string, orderUlid: string): Promise<DeliveryView>;
   startDelivery(token: string, orderUlid: string): Promise<DeliveryView>;
   completeDelivery(token: string, orderUlid: string, pin: string): Promise<DeliveryView>;
+  getMe(token: string): Promise<RiderProfile>;
 }
 
 export function createHttpApiClient(baseUrl: string): ApiClient {
@@ -105,6 +113,9 @@ export function createHttpApiClient(baseUrl: string): ApiClient {
         `/api/v1/rider/deliveries/${orderUlid}/complete`,
         post(token, { pin }),
       );
+    },
+    async getMe(token) {
+      return json<RiderProfile>('/api/v1/rider/me', auth(token));
     },
   };
 }

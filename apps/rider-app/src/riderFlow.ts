@@ -4,9 +4,18 @@
  * transitions and API orchestration live here (business logic out of UI), so the whole journey is
  * unit-tested in CI without a React Native runtime. `App.tsx` is a thin view over `getState()`.
  */
-import type { ApiClient, DeliveryView, RiderOfferView } from './api';
+import type { ApiClient, DeliveryView, RiderOfferView, RiderProfile } from './api';
 
-export type Screen = 'phone' | 'otp' | 'offers' | 'delivery';
+/** The three bottom-nav tabs. */
+export type Tab = 'offers' | 'delivery' | 'account';
+
+export type Screen = 'phone' | 'otp' | Tab;
+
+/** Whether a screen is a bottom-nav tab (so the tab bar shows there). */
+export const TABS: Tab[] = ['offers', 'delivery', 'account'];
+export function isTab(screen: Screen): screen is Tab {
+  return (TABS as string[]).includes(screen);
+}
 
 export interface RiderState {
   screen: Screen;
@@ -15,6 +24,7 @@ export interface RiderState {
   online: boolean;
   offers: RiderOfferView[];
   delivery: DeliveryView | null;
+  me: RiderProfile | null;
   error: string | null;
   busy: boolean;
 }
@@ -27,6 +37,7 @@ export function initialState(): RiderState {
     online: false,
     offers: [],
     delivery: null,
+    me: null,
     error: null,
     busy: false,
   };
@@ -46,6 +57,12 @@ export interface RiderModel {
   pickup(): Promise<void>;
   startDelivery(): Promise<void>;
   complete(pin: string): Promise<void>;
+  /** Switch bottom-nav tab (loads the profile on the Account tab). */
+  goToTab(tab: Tab): void;
+  /** Re-fetch the rider profile (Account tab). */
+  loadProfile(): Promise<void>;
+  /** Clear the session and return to sign-in. */
+  signOut(): void;
   backToOffers(): void;
 }
 
@@ -77,6 +94,14 @@ export function createRiderModel(api: ApiClient): RiderModel {
       return null;
     }
     return state.token;
+  }
+
+  async function loadProfile(): Promise<void> {
+    const token = state.token;
+    if (!token) {
+      return;
+    }
+    await run(async () => ({ me: await api.getMe(token) }), 'Could not load your profile');
   }
 
   return {
@@ -198,6 +223,19 @@ export function createRiderModel(api: ApiClient): RiderModel {
         async () => ({ delivery: await api.completeDelivery(token, ulid, pin) }),
         'PIN rejected',
       );
+    },
+
+    goToTab(tab) {
+      set({ screen: tab, error: null });
+      if (tab === 'account') {
+        void loadProfile();
+      }
+    },
+
+    loadProfile,
+
+    signOut() {
+      set(initialState());
     },
 
     backToOffers() {
