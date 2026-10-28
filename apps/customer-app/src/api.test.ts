@@ -55,6 +55,56 @@ describe('customer api client', () => {
     expect(init!.headers).toMatchObject({ Authorization: 'Bearer tok' });
   });
 
+  it('quoteCart posts the addressUlid and returns the breakdown', async () => {
+    const fetchMock = mockFetch(200, {
+      subtotalCents: 20_000,
+      deliveryFeeCents: 15_000,
+      serviceFeeCents: 0,
+      discountCents: 0,
+      totalCents: 35_000,
+      currency: 'KES',
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const api = createHttpApiClient('http://api');
+    const q = await api.quoteCart('tok', 'A1');
+    expect(q.totalCents).toBe(35_000);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('http://api/api/v1/cart/quote');
+    expect(init!.headers).toMatchObject({ Authorization: 'Bearer tok' });
+    expect(JSON.parse(init!.body as string)).toEqual({ addressUlid: 'A1' });
+  });
+
+  it('createOrder posts the addressUlid with the bearer token', async () => {
+    const fetchMock = mockFetch(201, {
+      ulid: 'O1',
+      orderNumber: 'BOJ-1',
+      status: 'payment_pending',
+      totalCents: 35_000,
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const api = createHttpApiClient('http://api');
+    const order = await api.createOrder('tok', 'A1');
+    expect(order.ulid).toBe('O1');
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('http://api/api/v1/orders');
+    expect(JSON.parse(init!.body as string)).toEqual({ addressUlid: 'A1' });
+  });
+
+  it('payOrder sends the Idempotency-Key header and the phone', async () => {
+    const fetchMock = mockFetch(202, { ulid: 'PAY1', status: 'pending', amountCents: 35_000 });
+    vi.stubGlobal('fetch', fetchMock);
+    const api = createHttpApiClient('http://api');
+    const pay = await api.payOrder('tok', 'O1', '+254700000000', 'idem-123');
+    expect(pay.status).toBe('pending');
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('http://api/api/v1/orders/O1/pay');
+    expect(init!.headers).toMatchObject({
+      Authorization: 'Bearer tok',
+      'Idempotency-Key': 'idem-123',
+    });
+    expect(JSON.parse(init!.body as string)).toEqual({ phone: '+254700000000' });
+  });
+
   it('throws on a non-2xx response', async () => {
     vi.stubGlobal('fetch', mockFetch(401, {}));
     const api = createHttpApiClient('http://api');
