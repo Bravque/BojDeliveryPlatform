@@ -9,13 +9,23 @@ import type {
   ApiClient,
   AddressSummary,
   OrderDetail,
+  OrderSummary,
   PublicCatalogue,
   PublicMerchant,
   PublicProduct,
   QuoteBreakdown,
 } from './api';
 
-export type Screen = 'phone' | 'otp' | 'browse' | 'merchant' | 'checkout' | 'track';
+/** The five bottom-nav tabs. */
+export type Tab = 'home' | 'stores' | 'search' | 'orders' | 'account';
+
+export type Screen = 'phone' | 'otp' | Tab | 'merchant' | 'checkout' | 'track';
+
+/** Whether a screen is a bottom-nav tab (so the tab bar shows there). */
+export const TABS: Tab[] = ['home', 'stores', 'search', 'orders', 'account'];
+export function isTab(screen: Screen): screen is Tab {
+  return (TABS as string[]).includes(screen);
+}
 
 /** One line in the (client-side) basket; the server cart is the source of truth for pricing. */
 export interface BasketLine {
@@ -35,6 +45,7 @@ export interface CustomerState {
   basket: BasketLine[];
   quote: QuoteBreakdown | null;
   address: AddressSummary | null;
+  orders: OrderSummary[];
   order: OrderDetail | null;
   error: string | null;
   busy: boolean;
@@ -56,6 +67,7 @@ export function initialState(): CustomerState {
     basket: [],
     quote: null,
     address: null,
+    orders: [],
     order: null,
     error: null,
     busy: false,
@@ -68,6 +80,12 @@ export interface CustomerModel {
   requestOtp(phone: string): Promise<void>;
   verifyOtp(code: string): Promise<void>;
   loadMerchants(townName?: string): Promise<void>;
+  /** Switch bottom-nav tab (loads the order history when moving to the Orders tab). */
+  goToTab(tab: Tab): void;
+  /** Re-fetch the customer's order history (Orders tab). */
+  loadOrders(): Promise<void>;
+  /** Clear the session and return to sign-in. */
+  signOut(): void;
   openMerchant(merchantUlid: string): Promise<void>;
   addToBasket(product: PublicProduct): Promise<void>;
   /** Resolve a delivery address + fetch the authoritative quote, then show checkout. */
@@ -108,6 +126,14 @@ export function createCustomerModel(api: ApiClient): CustomerModel {
     }
   }
 
+  async function loadOrders(): Promise<void> {
+    const token = state.token;
+    if (!token) {
+      return;
+    }
+    await run(async () => ({ orders: await api.listOrders(token) }), 'Could not load your orders');
+  }
+
   return {
     getState: () => state,
     subscribe(listener) {
@@ -126,15 +152,28 @@ export function createCustomerModel(api: ApiClient): CustomerModel {
       await run(async () => {
         const { access } = await api.verifyOtp(state.phone, code);
         const merchants = await api.listMerchants();
-        return { token: access, merchants, screen: 'browse' };
+        return { token: access, merchants, screen: 'home' };
       }, 'Invalid code');
     },
 
     async loadMerchants(townName) {
       await run(async () => {
         const merchants = await api.listMerchants(townName);
-        return { merchants, screen: 'browse' };
+        return { merchants, screen: 'home' };
       }, 'Could not load merchants');
+    },
+
+    goToTab(tab) {
+      set({ screen: tab, error: null });
+      if (tab === 'orders') {
+        void loadOrders();
+      }
+    },
+
+    loadOrders,
+
+    signOut() {
+      set(initialState());
     },
 
     async openMerchant(merchantUlid) {
@@ -246,7 +285,7 @@ export function createCustomerModel(api: ApiClient): CustomerModel {
     },
 
     backToBrowse() {
-      set({ screen: 'browse', catalogue: null, basket: [], quote: null, order: null, error: null });
+      set({ screen: 'home', catalogue: null, basket: [], quote: null, order: null, error: null });
     },
   };
 }

@@ -82,6 +82,17 @@ export interface OrderDetail {
   totalCents?: number;
 }
 
+/** A row in the customer's order history (`GET /orders`). */
+export interface OrderSummary {
+  ulid: string;
+  orderNumber: string;
+  status: string;
+  paymentStatus: string;
+  totalCents: number;
+  currency: string;
+  createdAt: string;
+}
+
 export interface ApiClient {
   requestOtp(phone: string): Promise<void>;
   verifyOtp(phone: string, code: string): Promise<AuthResult>;
@@ -103,6 +114,7 @@ export interface ApiClient {
     idempotencyKey: string,
   ): Promise<Payment>;
   getOrder(token: string, orderUlid: string): Promise<OrderDetail>;
+  listOrders(token: string): Promise<OrderSummary[]>;
 }
 
 export function createHttpApiClient(baseUrl: string): ApiClient {
@@ -193,6 +205,10 @@ export function createHttpApiClient(baseUrl: string): ApiClient {
     },
     async getOrder(token, orderUlid) {
       return json<OrderDetail>(`/api/v1/orders/${orderUlid}`, auth(token));
+    },
+    async listOrders(token) {
+      const { items } = await json<{ items: OrderSummary[] }>('/api/v1/orders', auth(token));
+      return items;
     },
   };
 }

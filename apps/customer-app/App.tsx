@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import {
   type ApiClient,
   type OrderDetail,
+  type OrderSummary,
   type PublicCatalogue,
   type PublicMerchant,
   type PublicProduct,
@@ -14,7 +15,9 @@ import {
   type BasketLine,
   type CustomerModel,
   type CustomerState,
+  type Tab,
   createCustomerModel,
+  isTab,
 } from './src/customerFlow';
 import { type ConnectOrderSocket, makeConnectOrderSocket } from './src/socket';
 import { API_BASE_URL } from './src/config';
@@ -30,7 +33,6 @@ import {
   PaddedScreen,
   PrimaryButton,
   Rating,
-  Screen,
   SearchBar,
   SecondaryButton,
   SectionTitle,
@@ -89,8 +91,60 @@ export function CustomerApp({ api, connectSocket }: AppProps = {}): JSX.Element 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       <StatusBar style="dark" />
-      <Screen>{renderScreen(model, state, banner)}</Screen>
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        {renderScreen(model, state, banner)}
+      </View>
+      {isTab(state.screen) ? (
+        <TabBar active={state.screen} onSelect={(t) => model.goToTab(t)} />
+      ) : null}
     </SafeAreaView>
+  );
+}
+
+function TabBar({ active, onSelect }: { active: Tab; onSelect: (t: Tab) => void }): JSX.Element {
+  const items: { tab: Tab; icon: string; label: string }[] = [
+    { tab: 'home', icon: '🏠', label: 'Home' },
+    { tab: 'stores', icon: '🏪', label: 'Stores' },
+    { tab: 'search', icon: '🔍', label: 'Search' },
+    { tab: 'orders', icon: '🧾', label: 'Orders' },
+    { tab: 'account', icon: '👤', label: 'Account' },
+  ];
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        borderTopWidth: 1,
+        borderTopColor: colors.border,
+        backgroundColor: colors.surface,
+        paddingTop: 8,
+        paddingBottom: 10,
+      }}
+    >
+      {items.map((it) => {
+        const on = it.tab === active;
+        return (
+          <Pressable
+            key={it.tab}
+            accessibilityRole="button"
+            accessibilityLabel={it.label}
+            onPress={() => onSelect(it.tab)}
+            style={{ flex: 1, alignItems: 'center' }}
+          >
+            <Text style={{ fontSize: 20, opacity: on ? 1 : 0.45 }}>{it.icon}</Text>
+            <Text
+              style={{
+                fontSize: 11,
+                marginTop: 2,
+                fontWeight: on ? '800' : '600',
+                color: on ? colors.primary : colors.muted,
+              }}
+            >
+              {it.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -110,8 +164,16 @@ function renderScreen(
           onSubmit={(c) => void model.verifyOtp(c)}
         />
       );
-    case 'browse':
+    case 'home':
       return <HomeScreen model={model} merchants={state.merchants} banner={banner} />;
+    case 'stores':
+      return <StoresScreen model={model} merchants={state.merchants} />;
+    case 'search':
+      return <SearchScreen model={model} merchants={state.merchants} />;
+    case 'orders':
+      return <OrdersScreen model={model} state={state} banner={banner} />;
+    case 'account':
+      return <AccountScreen model={model} state={state} />;
     case 'merchant':
       return (
         <MenuScreen
@@ -190,6 +252,58 @@ function titleCase(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+/** A tappable search box that just navigates to the Search tab. */
+function SearchPrompt({ onPress }: { onPress: () => void }): JSX.Element {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: colors.surfaceAlt,
+        borderRadius: 14,
+        paddingHorizontal: 14,
+        paddingVertical: 13,
+        marginHorizontal: 18,
+        marginVertical: 8,
+      }}
+    >
+      <Text style={{ fontSize: 16, marginRight: 8, color: colors.muted }}>🔍</Text>
+      <Text style={{ fontSize: 15, color: colors.muted }}>Search restaurants and dishes</Text>
+    </Pressable>
+  );
+}
+
+function CategoryBar({
+  merchants,
+  active,
+  onSelect,
+}: {
+  merchants: PublicMerchant[];
+  active: string;
+  onSelect: (c: string) => void;
+}): JSX.Element {
+  const cats = ['all', ...Array.from(new Set(merchants.map((m) => m.categoryType)))];
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={{ paddingHorizontal: 18, paddingVertical: 8 }}
+    >
+      {cats.map((c) => (
+        <Chip
+          key={c}
+          icon={c === 'all' ? '🧭' : categoryIcon(c)}
+          label={c === 'all' ? 'All' : titleCase(c)}
+          active={active === c}
+          onPress={() => onSelect(c)}
+        />
+      ))}
+    </ScrollView>
+  );
+}
+
 function HomeScreen({
   model,
   merchants,
@@ -199,59 +313,270 @@ function HomeScreen({
   merchants: PublicMerchant[];
   banner: JSX.Element | null;
 }): JSX.Element {
-  const [query, setQuery] = useState('');
   const [cat, setCat] = useState('all');
-
-  const cats = ['all', ...Array.from(new Set(merchants.map((m) => m.categoryType)))];
-  const shown = merchants.filter(
-    (m) =>
-      (cat === 'all' || m.categoryType === cat) &&
-      m.name.toLowerCase().includes(query.toLowerCase()),
-  );
+  const shown = merchants.filter((m) => cat === 'all' || m.categoryType === cat);
 
   return (
     <View style={{ flex: 1 }}>
       <LocationBar place={merchants[0]?.townName ?? 'Migori'} />
-      <SearchBar value={query} onChangeText={setQuery} />
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 18, paddingVertical: 8 }}
-      >
-        {cats.map((c) => (
-          <Chip
-            key={c}
-            icon={c === 'all' ? '🧭' : categoryIcon(c)}
-            label={c === 'all' ? 'All' : titleCase(c)}
-            active={cat === c}
-            onPress={() => setCat(c)}
-          />
-        ))}
-      </ScrollView>
+      <SearchPrompt onPress={() => model.goToTab('search')} />
+      <CategoryBar merchants={merchants} active={cat} onSelect={setCat} />
       {banner}
       <ScrollView
-        contentContainerStyle={{ paddingBottom: 28 }}
+        contentContainerStyle={{ paddingBottom: 20 }}
         showsVerticalScrollIndicator={false}
       >
         <View style={{ paddingHorizontal: 18 }}>
           <SectionTitle>Restaurants near you</SectionTitle>
         </View>
+        {shown.map((m) => (
+          <RestaurantCard
+            key={m.ulid}
+            merchant={m}
+            onPress={() => void model.openMerchant(m.ulid)}
+          />
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+// ---- stores tab (compact list of every merchant) ---------------------------------------------
+
+function StoresScreen({
+  model,
+  merchants,
+}: {
+  model: CustomerModel;
+  merchants: PublicMerchant[];
+}): JSX.Element {
+  const [cat, setCat] = useState('all');
+  const shown = merchants.filter((m) => cat === 'all' || m.categoryType === cat);
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={{ paddingHorizontal: 18, paddingTop: 12 }}>
+        <Title>Stores</Title>
+      </View>
+      <CategoryBar merchants={merchants} active={cat} onSelect={setCat} />
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 20 }}
+        showsVerticalScrollIndicator={false}
+      >
+        {shown.map((m) => (
+          <MerchantRow key={m.ulid} merchant={m} onPress={() => void model.openMerchant(m.ulid)} />
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+function MerchantRow({
+  merchant,
+  onPress,
+}: {
+  merchant: PublicMerchant;
+  onPress: () => void;
+}): JSX.Element {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 18,
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+      }}
+    >
+      <View
+        style={{
+          width: 52,
+          height: 52,
+          borderRadius: 14,
+          backgroundColor: thumbColor(merchant.name),
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginRight: 14,
+        }}
+      >
+        <Text style={{ fontSize: 26 }}>{categoryIcon(merchant.categoryType)}</Text>
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>{merchant.name}</Text>
+        <Text style={{ color: colors.muted, fontSize: 13, marginTop: 2 }}>
+          {titleCase(merchant.categoryType)} · {merchant.prepMinutes}–{merchant.prepMinutes + 10}{' '}
+          min
+        </Text>
+      </View>
+      <Tag label={merchant.isOpen ? 'Open' : 'Closed'} tone={merchant.isOpen ? 'ok' : 'off'} />
+    </Pressable>
+  );
+}
+
+// ---- search tab --------------------------------------------------------------------------------
+
+function SearchScreen({
+  model,
+  merchants,
+}: {
+  model: CustomerModel;
+  merchants: PublicMerchant[];
+}): JSX.Element {
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const shown = q ? merchants.filter((m) => m.name.toLowerCase().includes(q)) : merchants;
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={{ paddingHorizontal: 18, paddingTop: 12 }}>
+        <Title>Search</Title>
+      </View>
+      <SearchBar value={query} onChangeText={setQuery} />
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 20 }}
+        showsVerticalScrollIndicator={false}
+      >
         {shown.length === 0 ? (
-          <View style={{ paddingHorizontal: 18 }}>
-            <Muted>No places match your search yet.</Muted>
+          <View style={{ paddingHorizontal: 18, paddingTop: 10 }}>
+            <Muted>No results for “{query}”.</Muted>
           </View>
         ) : (
           shown.map((m) => (
-            <RestaurantCard
+            <MerchantRow
               key={m.ulid}
               merchant={m}
               onPress={() => void model.openMerchant(m.ulid)}
             />
           ))
         )}
-        <TrackEntry onTrack={(ulid) => void model.trackOrder(ulid)} />
       </ScrollView>
     </View>
+  );
+}
+
+// ---- orders tab --------------------------------------------------------------------------------
+
+function OrdersScreen({
+  model,
+  state,
+  banner,
+}: {
+  model: CustomerModel;
+  state: CustomerState;
+  banner: JSX.Element | null;
+}): JSX.Element {
+  return (
+    <View style={{ flex: 1 }}>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingHorizontal: 18,
+          paddingTop: 12,
+        }}
+      >
+        <Title>Your orders</Title>
+        <SecondaryButton title="Refresh" onPress={() => void model.loadOrders()} />
+      </View>
+      {banner}
+      {state.error ? (
+        <View style={{ paddingHorizontal: 18 }}>
+          <Alert message={state.error} />
+        </View>
+      ) : null}
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 20, paddingTop: 6 }}
+        showsVerticalScrollIndicator={false}
+      >
+        {state.orders.length === 0 ? (
+          <View style={{ paddingHorizontal: 18 }}>
+            <Card>
+              <Text style={{ fontSize: 32, textAlign: 'center' }}>🧾</Text>
+              <Text style={{ color: colors.muted, textAlign: 'center', marginTop: 6 }}>
+                No orders yet. Your orders will show up here.
+              </Text>
+            </Card>
+          </View>
+        ) : (
+          state.orders.map((o) => (
+            <OrderRow key={o.ulid} order={o} onPress={() => void model.trackOrder(o.ulid)} />
+          ))
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+function OrderRow({ order, onPress }: { order: OrderSummary; onPress: () => void }): JSX.Element {
+  const paid = order.paymentStatus === 'paid';
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 18,
+        paddingVertical: 14,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+      }}
+    >
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>
+          {order.orderNumber}
+        </Text>
+        <Text style={{ color: colors.muted, fontSize: 13, marginTop: 2 }}>
+          {order.currency} {(order.totalCents / 100).toFixed(0)} ·{' '}
+          {new Date(order.createdAt).toLocaleDateString()}
+        </Text>
+      </View>
+      <Tag label={prettyStatus(order.status)} tone={paid ? 'ok' : 'neutral'} />
+      <Text style={{ fontSize: 20, color: colors.muted, marginLeft: 8 }}>›</Text>
+    </Pressable>
+  );
+}
+
+// ---- account tab -------------------------------------------------------------------------------
+
+function AccountScreen({
+  model,
+  state,
+}: {
+  model: CustomerModel;
+  state: CustomerState;
+}): JSX.Element {
+  return (
+    <ScrollView contentContainerStyle={{ padding: 18 }}>
+      <Title>Account</Title>
+      <Card>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <View
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: 26,
+              backgroundColor: colors.surfaceAlt,
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginRight: 14,
+            }}
+          >
+            <Text style={{ fontSize: 26 }}>👤</Text>
+          </View>
+          <View>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>
+              Signed in as
+            </Text>
+            <Text style={{ color: colors.muted, marginTop: 2 }}>{state.phone}</Text>
+          </View>
+        </View>
+      </Card>
+      <SecondaryButton title="Sign out" onPress={() => model.signOut()} />
+      <Text style={{ color: colors.muted, textAlign: 'center', marginTop: 16, fontSize: 12 }}>
+        Boj Food · demo build
+      </Text>
+    </ScrollView>
   );
 }
 
@@ -299,24 +624,6 @@ function RestaurantCard({
         </Text>
       </Card>
     </Pressable>
-  );
-}
-
-function TrackEntry({ onTrack }: { onTrack: (ulid: string) => void }): JSX.Element {
-  const [ulid, setUlid] = useState('');
-  return (
-    <View style={{ marginHorizontal: 18, marginTop: 6 }}>
-      <Card>
-        <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: 2 }}>
-          Have an order? 📦
-        </Text>
-        <Text style={{ color: colors.muted, marginBottom: 10, fontSize: 14 }}>
-          Paste your order code to follow it live.
-        </Text>
-        <Field label="Order ULID" value={ulid} onChangeText={setUlid} placeholder="01M5…" />
-        <PrimaryButton title="Track my order" onPress={() => onTrack(ulid.trim())} />
-      </Card>
-    </View>
   );
 }
 
