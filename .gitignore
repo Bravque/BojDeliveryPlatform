@@ -24,3 +24,9 @@ pnpm-debug.log*
 # OS / editor
 .DS_Store
 Thumbs.db
+
+# local dev run (keys, scripts) — never committed
+.dev-local/
+
+# Expo local cache
+**/.expo/

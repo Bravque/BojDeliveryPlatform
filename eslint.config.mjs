@@ -13,6 +13,7 @@ export default tseslint.config(
       '**/.turbo/**',
       '**/coverage/**',
       'scripts/load-test/**',
+      '.dev-local/**',
     ],
   },
   js.configs.recommended,
@@ -47,5 +48,10 @@ export default tseslint.config(
       globals: { ...globals.node, ...globals.browser },
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+  },
+  {
+    // Metro config is loaded by Metro as CommonJS, so require()/module.exports are expected.
+    files: ['**/metro.config.js'],
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
   },
 );
