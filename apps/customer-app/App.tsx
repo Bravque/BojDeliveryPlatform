@@ -10,7 +10,12 @@ import {
   catalogueProducts,
   createHttpApiClient,
 } from './src/api';
-import { type CustomerModel, type CustomerState, createCustomerModel } from './src/customerFlow';
+import {
+  type BasketLine,
+  type CustomerModel,
+  type CustomerState,
+  createCustomerModel,
+} from './src/customerFlow';
 import { type ConnectOrderSocket, makeConnectOrderSocket } from './src/socket';
 import { API_BASE_URL } from './src/config';
 import {
@@ -108,7 +113,16 @@ function renderScreen(
     case 'browse':
       return <HomeScreen model={model} merchants={state.merchants} banner={banner} />;
     case 'merchant':
-      return <MenuScreen model={model} catalogue={state.catalogue} banner={banner} />;
+      return (
+        <MenuScreen
+          model={model}
+          catalogue={state.catalogue}
+          basket={state.basket}
+          banner={banner}
+        />
+      );
+    case 'checkout':
+      return <CheckoutScreen model={model} state={state} banner={banner} />;
     case 'track':
       return <TrackScreen model={model} order={state.order} error={state.error} />;
   }
@@ -315,20 +329,21 @@ function money(cents: number, currency = 'KES'): string {
 function MenuScreen({
   model,
   catalogue,
+  basket,
   banner,
 }: {
   model: CustomerModel;
   catalogue: PublicCatalogue | null;
+  basket: BasketLine[];
   banner: JSX.Element | null;
 }): JSX.Element {
-  const [count, setCount] = useState(0);
-  const [total, setTotal] = useState(0);
-
   if (!catalogue) {
     return <View style={{ padding: 18 }}>{banner}</View>;
   }
   const m = catalogue.merchant;
   const products = catalogueProducts(catalogue);
+  const count = basket.reduce((n, b) => n + b.qty, 0);
+  const total = basket.reduce((s, b) => s + b.priceCents * b.qty, 0);
 
   return (
     <View style={{ flex: 1 }}>
@@ -380,22 +395,15 @@ function MenuScreen({
           <SectionTitle>Menu</SectionTitle>
         </View>
         {products.map((p) => (
-          <MenuRow
-            key={p.ulid}
-            product={p}
-            onAdd={() => {
-              setCount((c) => c + 1);
-              setTotal((t) => t + p.priceCents);
-            }}
-          />
+          <MenuRow key={p.ulid} product={p} onAdd={() => void model.addToBasket(p)} />
         ))}
       </ScrollView>
 
       {count > 0 ? (
         <View style={{ position: 'absolute', left: 16, right: 16, bottom: 16 }}>
-          <Pressable style={basketBarStyle}>
+          <Pressable style={basketBarStyle} onPress={() => void model.openCheckout()}>
             <Text style={{ color: colors.onPrimary, fontWeight: '800', fontSize: 15 }}>
-              View basket · {count} item{count > 1 ? 's' : ''}
+              Go to checkout · {count} item{count > 1 ? 's' : ''}
             </Text>
             <Text style={{ color: colors.onPrimary, fontWeight: '900', fontSize: 15 }}>
               {money(total)}
@@ -403,6 +411,107 @@ function MenuScreen({
           </Pressable>
         </View>
       ) : null}
+    </View>
+  );
+}
+
+// ---- checkout --------------------------------------------------------------------------------
+
+function CheckoutScreen({
+  model,
+  state,
+  banner,
+}: {
+  model: CustomerModel;
+  state: CustomerState;
+  banner: JSX.Element | null;
+}): JSX.Element {
+  const q = state.quote;
+  return (
+    <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 28 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+        <Pressable
+          accessibilityLabel="Back"
+          onPress={() => model.backToMenu()}
+          style={{
+            width: 38,
+            height: 38,
+            borderRadius: 19,
+            backgroundColor: colors.surfaceAlt,
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginRight: 12,
+          }}
+        >
+          <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>‹</Text>
+        </Pressable>
+        <Text style={{ fontSize: 22, fontWeight: '900', color: colors.text }}>Checkout</Text>
+      </View>
+
+      {state.error ? <Alert message={state.error} /> : null}
+
+      <SectionTitle>Your order</SectionTitle>
+      <Card>
+        {state.basket.map((line) => (
+          <View
+            key={line.productUlid}
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              paddingVertical: 6,
+            }}
+          >
+            <Text style={{ color: colors.text, fontWeight: '600', flex: 1 }}>
+              {line.qty} × {line.name}
+            </Text>
+            <Text style={{ color: colors.text, fontWeight: '700' }}>
+              {money(line.priceCents * line.qty, line.currency)}
+            </Text>
+          </View>
+        ))}
+      </Card>
+
+      <SectionTitle>Delivery to</SectionTitle>
+      <Card>
+        <Text style={{ color: colors.text, fontWeight: '700' }}>📍 {state.address?.line1}</Text>
+      </Card>
+
+      {q ? (
+        <Card>
+          <SummaryRow label="Subtotal" value={money(q.subtotalCents, q.currency)} />
+          <SummaryRow label="Delivery fee" value={money(q.deliveryFeeCents, q.currency)} />
+          {q.serviceFeeCents > 0 ? (
+            <SummaryRow label="Service fee" value={money(q.serviceFeeCents, q.currency)} />
+          ) : null}
+          {q.discountCents > 0 ? (
+            <SummaryRow label="Discount" value={`- ${money(q.discountCents, q.currency)}`} />
+          ) : null}
+          <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 8 }} />
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <Text style={{ fontSize: 17, fontWeight: '900', color: colors.text }}>Total</Text>
+            <Text style={{ fontSize: 17, fontWeight: '900', color: colors.text }}>
+              {money(q.totalCents, q.currency)}
+            </Text>
+          </View>
+        </Card>
+      ) : null}
+
+      {banner}
+
+      <PrimaryButton
+        title={q ? `Pay ${money(q.totalCents, q.currency)} with M-Pesa` : 'Pay with M-Pesa'}
+        onPress={() => void model.placeOrder()}
+      />
+      <Muted>You&apos;ll get an M-Pesa prompt on {state.phone} to confirm.</Muted>
+    </ScrollView>
+  );
+}
+
+function SummaryRow({ label, value }: { label: string; value: string }): JSX.Element {
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
+      <Text style={{ color: colors.muted, fontWeight: '600' }}>{label}</Text>
+      <Text style={{ color: colors.text, fontWeight: '700' }}>{value}</Text>
     </View>
   );
 }
@@ -478,6 +587,7 @@ function TrackScreen({
 }): JSX.Element {
   const status = order?.status ?? '';
   const cancelled = status === 'cancelled' || status === 'rejected';
+  const pending = status === 'payment_pending' || status === 'draft';
   const currentIndex = STEPS.findIndex((s) => s.key === status);
   const delivered = status === 'delivered';
 
@@ -509,7 +619,13 @@ function TrackScreen({
       {order ? (
         <Card>
           <Text style={{ fontSize: 40, textAlign: 'center' }}>
-            {cancelled ? '❌' : delivered ? '🎉' : (STEPS[Math.max(currentIndex, 0)]?.icon ?? '⏳')}
+            {cancelled
+              ? '❌'
+              : pending
+                ? '💳'
+                : delivered
+                  ? '🎉'
+                  : (STEPS[Math.max(currentIndex, 0)]?.icon ?? '⏳')}
           </Text>
           <Text
             style={{
@@ -520,21 +636,23 @@ function TrackScreen({
               marginTop: 6,
             }}
           >
-            {prettyStatus(status || 'Pending')}
+            {pending ? 'Awaiting payment' : prettyStatus(status || 'Pending')}
           </Text>
           <Text
             style={{ color: colors.muted, textAlign: 'center', marginTop: 4, fontWeight: '600' }}
           >
             {cancelled
               ? 'This order was cancelled.'
-              : delivered
-                ? 'Enjoy your meal! 🍽️'
-                : 'Estimated arrival in ~20 min'}
+              : pending
+                ? `Approve the M-Pesa prompt on your phone to confirm.`
+                : delivered
+                  ? 'Enjoy your meal! 🍽️'
+                  : 'Estimated arrival in ~20 min'}
           </Text>
         </Card>
       ) : null}
 
-      {!cancelled && order ? (
+      {!cancelled && !pending && order ? (
         <View style={{ marginTop: 6 }}>
           {STEPS.map((step, i) => {
             const done = currentIndex >= 0 && i <= currentIndex;
