@@ -65,6 +65,19 @@ function makeApi(over: Partial<ApiClient> = {}): ApiClient {
     getOrder: vi.fn(() =>
       Promise.resolve<OrderDetail>({ ulid: 'O1', orderNumber: 'BOJ-1', status: 'placed' }),
     ),
+    listOrders: vi.fn(() =>
+      Promise.resolve([
+        {
+          ulid: 'O1',
+          orderNumber: 'BOJ-1',
+          status: 'placed',
+          paymentStatus: 'paid',
+          totalCents: 35_000,
+          currency: 'KES',
+          createdAt: '2026-10-28T00:00:00.000Z',
+        },
+      ]),
+    ),
     ...over,
   };
 }
@@ -81,7 +94,7 @@ describe('customer flow — critical journey', () => {
     await model.verifyOtp('123456');
     let s = model.getState();
     expect(s.token).toBe('tok');
-    expect(s.screen).toBe('browse');
+    expect(s.screen).toBe('home');
     expect(s.merchants.map((m) => m.ulid)).toEqual(['M1']);
     expect(api.verifyOtp).toHaveBeenCalledWith('+254700000000', '123456');
 
@@ -191,6 +204,27 @@ describe('customer flow — critical journey', () => {
     const s = model.getState();
     expect(s.basket).toEqual([]);
     expect(s.error).toBe('Could not add to basket');
+  });
+
+  it('tab nav: goToTab switches tabs, Orders loads history, Account sign-out resets', async () => {
+    const api = makeApi();
+    const model = createCustomerModel(api);
+    await model.verifyOtp('123456');
+    expect(model.getState().screen).toBe('home');
+
+    model.goToTab('stores');
+    expect(model.getState().screen).toBe('stores');
+
+    model.goToTab('orders');
+    await new Promise((r) => setTimeout(r, 0)); // loadOrders fires async
+    const s = model.getState();
+    expect(s.screen).toBe('orders');
+    expect(api.listOrders).toHaveBeenCalled();
+    expect(s.orders.map((o) => o.orderNumber)).toEqual(['BOJ-1']);
+
+    model.signOut();
+    expect(model.getState().screen).toBe('phone');
+    expect(model.getState().token).toBeNull();
   });
 
   it('notifies subscribers on state changes', async () => {

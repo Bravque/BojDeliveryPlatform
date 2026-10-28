@@ -55,6 +55,30 @@ describe('customer api client', () => {
     expect(init!.headers).toMatchObject({ Authorization: 'Bearer tok' });
   });
 
+  it('listOrders unwraps { items } with the bearer token', async () => {
+    const fetchMock = mockFetch(200, {
+      items: [
+        {
+          ulid: 'O1',
+          orderNumber: 'BOJ-1',
+          status: 'placed',
+          paymentStatus: 'paid',
+          totalCents: 35_000,
+          currency: 'KES',
+          createdAt: '2026-10-28T00:00:00.000Z',
+        },
+      ],
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const api = createHttpApiClient('http://api');
+    const orders = await api.listOrders('tok');
+    expect(orders).toHaveLength(1);
+    expect(orders[0]!.orderNumber).toBe('BOJ-1');
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('http://api/api/v1/orders');
+    expect(init!.headers).toMatchObject({ Authorization: 'Bearer tok' });
+  });
+
   it('quoteCart posts the addressUlid and returns the breakdown', async () => {
     const fetchMock = mockFetch(200, {
       subtotalCents: 20_000,
