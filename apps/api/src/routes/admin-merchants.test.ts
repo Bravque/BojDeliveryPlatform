@@ -41,6 +41,8 @@ const merchantService: MerchantService = {
   setPayoutDestination: (_actor, _ulid, phone) =>
     Promise.resolve({ ...summary, payoutPhoneE164: `+254${phone.replace(/\D/g, '').slice(-9)}` }),
   addOwner: () => Promise.resolve(summary),
+  listMerchants: () =>
+    Promise.resolve([{ ...summary, townName: 'Migori', createdAt: '2026-01-01T00:00:00.000Z' }]),
 };
 
 const catalogueService: CatalogueService = {
@@ -74,6 +76,36 @@ const validBody = {
   categoryType: 'restaurant',
   commissionBps: 1000,
 };
+
+describe('GET /api/v1/admin/merchants (RBAC)', () => {
+  it('lists merchants for an admin (200)', async () => {
+    const res = await request(app())
+      .get('/api/v1/admin/merchants')
+      .set('Authorization', `Bearer ${tokenFor(['admin'])}`);
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0]).toMatchObject({ ulid: 'M1', townName: 'Migori' });
+  });
+
+  it('lists merchants for ops (200)', async () => {
+    const res = await request(app())
+      .get('/api/v1/admin/merchants')
+      .set('Authorization', `Bearer ${tokenFor(['ops'])}`);
+    expect(res.status).toBe(200);
+  });
+
+  it('rejects an unauthenticated request with 401', async () => {
+    const res = await request(app()).get('/api/v1/admin/merchants');
+    expect(res.status).toBe(401);
+  });
+
+  it('forbids a customer with 403', async () => {
+    const res = await request(app())
+      .get('/api/v1/admin/merchants')
+      .set('Authorization', `Bearer ${tokenFor(['customer'])}`);
+    expect(res.status).toBe(403);
+  });
+});
 
 describe('POST /api/v1/admin/merchants (RBAC)', () => {
   it('creates a merchant for an admin (201)', async () => {

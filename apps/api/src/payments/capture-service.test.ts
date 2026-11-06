@@ -167,6 +167,9 @@ class FakeCapturePaymentsRepo implements PaymentsRepo {
     this.refunds.push({ ...input, id, approvedBy: null, providerRef: null });
     return Promise.resolve(id);
   }
+  async listRefunds() {
+    return [];
+  }
   markPaymentReversed(_id: number, receipt: string | null): Promise<void> {
     this.payment.status = 'reversed';
     this.payment.mpesaReceipt = receipt;

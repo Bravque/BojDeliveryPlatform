@@ -30,11 +30,16 @@ export interface RiderEarnings {
   totalEarnedCents: number;
 }
 
+/** A rider plus sign-in phone + application time, for the admin console list. */
+export type RiderListRow = RiderRecord & { phoneE164: string | null; createdAt: Date };
+
 export interface RiderRepo {
   findUserIdByUlid(ulid: string): Promise<number | null>;
   createRiderProfile(input: { userId: number; vehicleType: VehicleType }): Promise<RiderRecord>;
   findRiderByUserUlid(ulid: string): Promise<RiderRecord | null>;
   findRiderByUserId(userId: number): Promise<RiderRecord | null>;
+  /** All rider profiles with sign-in phone, newest first (admin onboarding console). */
+  listRiders(): Promise<RiderListRow[]>;
   setRiderStatus(userId: number, status: RiderStatus): Promise<void>;
   /** Set (or clear, with null) the rider's canonical-E.164 withdrawal destination. */
   setPayoutPhone(userId: number, phoneE164: string | null): Promise<void>;
@@ -121,6 +126,22 @@ export function createKnexRiderRepo(db: Knex): RiderRepo {
         .where('rider_profile.user_id', userId)
         .first(RIDER_COLUMNS)) as RiderRowDb | undefined;
       return row ? mapRider(row) : null;
+    },
+
+    async listRiders() {
+      const rows = (await db('rider_profile')
+        .join('user', 'user.id', 'rider_profile.user_id')
+        .orderBy('rider_profile.created_at', 'desc')
+        .select([
+          ...RIDER_COLUMNS,
+          'user.phone_e164 as phone_e164',
+          'rider_profile.created_at as created_at',
+        ])) as Array<RiderRowDb & { phone_e164: string | null; created_at: string | Date }>;
+      return rows.map((r) => ({
+        ...mapRider(r),
+        phoneE164: r.phone_e164 ?? null,
+        createdAt: new Date(r.created_at),
+      }));
     },
 
     async setRiderStatus(userId, status) {

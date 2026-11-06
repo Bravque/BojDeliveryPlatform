@@ -2,7 +2,7 @@ import type { AuditService } from '../auth/audit-service';
 import { newUlid } from '../auth/crypto';
 import { normalizeKenyanPhone } from '../auth/phone';
 import { badRequest, notFound } from '../http/errors';
-import type { MerchantCategory, MerchantRecord, MerchantRepo } from './repo';
+import type { MerchantCategory, MerchantListRow, MerchantRecord, MerchantRepo } from './repo';
 
 /** The acting principal (from req.principal). Resolved to a DB user id for the audit trail. */
 export interface Actor {
@@ -29,6 +29,12 @@ export interface MerchantSummary {
   commissionBps: number;
   /** Canonical E.164 M-Pesa payout destination, or null when none is on file. */
   payoutPhoneE164: string | null;
+}
+
+/** A merchant summary enriched for the admin console list (town + creation time). */
+export interface MerchantListItem extends MerchantSummary {
+  townName: string;
+  createdAt: string;
 }
 
 export interface MerchantServiceDeps {
@@ -93,6 +99,16 @@ export function createMerchantService(deps: MerchantServiceDeps) {
       throw notFound('Merchant not found');
     }
     return merchant;
+  }
+
+  /** Every merchant for the admin console (read-only; newest first). */
+  async function listMerchants(): Promise<MerchantListItem[]> {
+    const rows = await repo.listMerchants();
+    return rows.map((m: MerchantListRow) => ({
+      ...toSummary(m),
+      townName: m.townName,
+      createdAt: m.createdAt.toISOString(),
+    }));
   }
 
   async function createMerchant(
@@ -193,7 +209,14 @@ export function createMerchantService(deps: MerchantServiceDeps) {
     return toSummary(merchant);
   }
 
-  return { createMerchant, approveMerchant, suspendMerchant, setPayoutDestination, addOwner };
+  return {
+    createMerchant,
+    approveMerchant,
+    suspendMerchant,
+    setPayoutDestination,
+    addOwner,
+    listMerchants,
+  };
 }
 
 export type MerchantService = ReturnType<typeof createMerchantService>;

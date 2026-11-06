@@ -1,7 +1,7 @@
 import type { AuditService } from '../auth/audit-service';
 import { badRequest, conflict, notFound, unauthorized } from '../http/errors';
 import { normalizeKenyanPhone } from '../auth/phone';
-import type { RiderEarnings, RiderRecord, RiderRepo, VehicleType } from './repo';
+import type { RiderEarnings, RiderListRow, RiderRecord, RiderRepo, VehicleType } from './repo';
 
 /** The acting principal (from req.principal). Resolved to a DB user id for the audit trail. */
 export interface Actor {
@@ -16,6 +16,12 @@ export interface RiderSummary {
   isOnline: boolean;
   /** M-Pesa withdrawal destination; null = earnings pay out to the sign-in number. */
   payoutPhoneE164: string | null;
+}
+
+/** A rider summary enriched for the admin console list (sign-in phone + application time). */
+export interface RiderListItem extends RiderSummary {
+  phoneE164: string | null;
+  createdAt: string;
 }
 
 export interface RiderServiceDeps {
@@ -72,6 +78,16 @@ export function createRiderService(deps: RiderServiceDeps) {
       throw notFound('Rider not found');
     }
     return rider;
+  }
+
+  /** Every rider profile for the admin console (read-only; newest first). */
+  async function listRiders(): Promise<RiderListItem[]> {
+    const rows = await repo.listRiders();
+    return rows.map((r: RiderListRow) => ({
+      ...toSummary(r),
+      phoneE164: r.phoneE164,
+      createdAt: r.createdAt.toISOString(),
+    }));
   }
 
   /** A signed-in user applies to become a rider; the profile starts `pending` for admin review. */
@@ -173,6 +189,7 @@ export function createRiderService(deps: RiderServiceDeps) {
     getOwnRider,
     getOwnEarnings,
     setPayoutDestination,
+    listRiders,
   };
 }
 

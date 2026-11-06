@@ -40,6 +40,7 @@ const merchantService: MerchantService = {
   suspendMerchant: () => Promise.reject(new Error('not used')),
   setPayoutDestination: () => Promise.reject(new Error('not used')),
   addOwner: () => Promise.reject(new Error('not used')),
+  listMerchants: () => Promise.reject(new Error('not used')),
 };
 
 function appWith(catalogueService: CatalogueService) {
