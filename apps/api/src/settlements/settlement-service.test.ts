@@ -50,6 +50,10 @@ function makeRepo(rows: DeliveredOrderRow[]) {
       return Promise.resolve();
     },
     listSettlements: () => Promise.resolve(settlements),
+    findMerchantForStaffUlid: (userUlid: string) =>
+      Promise.resolve(userUlid === 'MERCHANT-A' ? { id: 1, ulid: 'MA', name: 'A' } : null),
+    listSettlementsForMerchant: (merchantId: number) =>
+      Promise.resolve(settlements.filter((s) => s.merchantId === merchantId)),
   } as unknown as SettlementsRepo;
 
   const audits: Partial<AuditEntry>[] = [];
@@ -151,5 +155,25 @@ describe('settlement service', () => {
     // Merchant A (settlement id 1) has two lines netting 27000 + 13000 = 40000.
     const aLines = lines.filter((l) => l.settlementId === 1);
     expect(aLines.reduce((s, l) => s + l.netCents, 0)).toBe(40_000);
+  });
+
+  it('lists only the caller merchant’s own settlements', async () => {
+    const { svc } = makeRepo(ROWS);
+    await svc.generateSettlements(FINANCE, period); // settlements for merchants 1 and 2
+    const mine = await svc.listMerchantSettlements({
+      ulid: 'MERCHANT-A',
+      roles: ['merchant_owner'],
+    });
+    expect(mine).toHaveLength(1);
+    expect(mine[0]?.merchantUlid).toBe('MA');
+  });
+
+  it('404s a caller linked to no merchant', async () => {
+    const { svc } = makeRepo(ROWS);
+    expect(
+      await thrownStatus(
+        svc.listMerchantSettlements({ ulid: 'NOBODY', roles: ['merchant_owner'] }),
+      ),
+    ).toBe(404);
   });
 });

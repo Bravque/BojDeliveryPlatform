@@ -71,6 +71,14 @@ export function merchantRouter(
     requireRole('merchant_owner', 'merchant_staff'),
   ];
 
+  router.get(
+    '/merchant/catalogue',
+    ...merchantOnly,
+    asyncHandler(async (req, res) => {
+      res.status(200).json(await catalogueService.getOwnCatalogue(actorUlid(req)));
+    }),
+  );
+
   router.patch(
     '/merchant/profile',
     ...merchantOnly,

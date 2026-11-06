@@ -75,6 +75,48 @@ function toInventorySummary(inv: InventoryRecord): InventorySummary {
   return { trackStock: inv.trackStock, quantity: inv.quantity, reserved: inv.reserved };
 }
 
+/** Full management view of a merchant's own catalogue (incl. unavailable items + versions). */
+export interface ManagedOption {
+  ulid: string;
+  name: string;
+  priceDeltaCents: number;
+  isAvailable: boolean;
+}
+
+export interface ManagedOptionGroup {
+  ulid: string;
+  name: string;
+  minSelect: number;
+  maxSelect: number;
+  options: ManagedOption[];
+}
+
+export interface ManagedCategory {
+  ulid: string;
+  name: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+export interface ManagedProduct {
+  ulid: string;
+  name: string;
+  description: string | null;
+  priceCents: number;
+  currency: string;
+  isAvailable: boolean;
+  version: number;
+  categoryUlid: string | null;
+  inventory: InventorySummary | null;
+  optionGroups: ManagedOptionGroup[];
+}
+
+export interface MerchantCatalogueView {
+  merchant: { ulid: string };
+  categories: ManagedCategory[];
+  products: ManagedProduct[];
+}
+
 function toOptionGroupSummary(g: OptionGroupRecord): OptionGroupSummary {
   return { ulid: g.ulid, name: g.name, minSelect: g.minSelect, maxSelect: g.maxSelect };
 }
@@ -152,6 +194,77 @@ export function createCatalogueService(deps: CatalogueServiceDeps) {
       throw notFound('Product not found');
     }
     return product;
+  }
+
+  /**
+   * The merchant's own full catalogue for management: all categories (incl. inactive) and all
+   * products (incl. unavailable), each carrying its optimistic-lock `version`, inventory, and
+   * nested option groups/options. Unlike the public browse endpoint (available-only, no `version`)
+   * this is what the dashboard needs to list and edit the menu.
+   */
+  async function getOwnCatalogue(actorUlid: string): Promise<MerchantCatalogueView> {
+    const ctx = await requireContext(actorUlid);
+    const [categories, products] = await Promise.all([
+      repo.listCategoriesForMerchant(ctx.merchantId),
+      repo.listProductsForMerchant(ctx.merchantId),
+    ]);
+    const productIds = products.map((p) => p.id);
+    const [groups, inventories] = await Promise.all([
+      repo.listOptionGroupsForProducts(productIds),
+      repo.listInventoryForProducts(productIds),
+    ]);
+    const options = await repo.listOptionsForGroups(groups.map((g) => g.id));
+
+    const categoryUlidById = new Map(categories.map((c) => [c.id, c.ulid]));
+    const inventoryByProduct = new Map(inventories.map((inv) => [inv.productId, inv]));
+    const optionsByGroup = new Map<number, OptionRecord[]>();
+    for (const o of options) {
+      const list = optionsByGroup.get(o.optionGroupId) ?? [];
+      list.push(o);
+      optionsByGroup.set(o.optionGroupId, list);
+    }
+    const groupsByProduct = new Map<number, OptionGroupRecord[]>();
+    for (const g of groups) {
+      const list = groupsByProduct.get(g.productId) ?? [];
+      list.push(g);
+      groupsByProduct.set(g.productId, list);
+    }
+
+    return {
+      merchant: { ulid: ctx.merchantUlid },
+      categories: categories.map((c) => ({
+        ulid: c.ulid,
+        name: c.name,
+        sortOrder: c.sortOrder,
+        isActive: c.isActive,
+      })),
+      products: products.map((p) => {
+        const inv = inventoryByProduct.get(p.id);
+        return {
+          ulid: p.ulid,
+          name: p.name,
+          description: p.description,
+          priceCents: p.priceCents,
+          currency: p.currency,
+          isAvailable: p.isAvailable,
+          version: p.version,
+          categoryUlid: p.categoryId === null ? null : (categoryUlidById.get(p.categoryId) ?? null),
+          inventory: inv ? toInventorySummary(inv) : null,
+          optionGroups: (groupsByProduct.get(p.id) ?? []).map((g) => ({
+            ulid: g.ulid,
+            name: g.name,
+            minSelect: g.minSelect,
+            maxSelect: g.maxSelect,
+            options: (optionsByGroup.get(g.id) ?? []).map((o) => ({
+              ulid: o.ulid,
+              name: o.name,
+              priceDeltaCents: o.priceDeltaCents,
+              isAvailable: o.isAvailable,
+            })),
+          })),
+        };
+      }),
+    };
   }
 
   async function createCategory(
@@ -301,6 +414,7 @@ export function createCatalogueService(deps: CatalogueServiceDeps) {
   }
 
   return {
+    getOwnCatalogue,
     createCategory,
     createProduct,
     editProduct,

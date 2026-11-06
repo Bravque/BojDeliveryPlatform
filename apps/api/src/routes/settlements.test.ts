@@ -38,6 +38,7 @@ const settlementService: SettlementService = {
   approveSettlement: () => Promise.resolve({ ...view, status: 'approved' }),
   getSettlement: () => Promise.resolve(view),
   listSettlements: () => Promise.resolve([view]),
+  listMerchantSettlements: () => Promise.resolve([view]),
 };
 
 function app() {
@@ -104,5 +105,21 @@ describe('settlements admin (RBAC)', () => {
       .set('Authorization', `Bearer ${tokenFor(['ops'])}`);
     expect(got.status).toBe(200);
     expect(got.body.netCents).toBe(40_000);
+  });
+});
+
+describe('merchant earnings (RBAC)', () => {
+  it('merchant owner 200, customer 403', async () => {
+    const ok = await request(app())
+      .get('/api/v1/merchant/settlements')
+      .set('Authorization', `Bearer ${tokenFor(['merchant_owner'])}`);
+    expect(ok.status).toBe(200);
+    expect(ok.body.items).toHaveLength(1);
+    expect(ok.body.items[0].netCents).toBe(40_000);
+
+    const forbidden = await request(app())
+      .get('/api/v1/merchant/settlements')
+      .set('Authorization', `Bearer ${tokenFor(['customer'])}`);
+    expect(forbidden.status).toBe(403);
   });
 });

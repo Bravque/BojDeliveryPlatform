@@ -34,6 +34,16 @@ export function merchantOrdersRouter(
     }),
   );
 
+  router.get(
+    '/merchant/orders/:ulid',
+    ...staffOnly,
+    asyncHandler(async (req, res) => {
+      res
+        .status(200)
+        .json(await fulfillmentService.getMerchantOrder(actorOf(req), req.params.ulid!));
+    }),
+  );
+
   router.post(
     '/merchant/orders/:ulid/accept',
     ...staffOnly,

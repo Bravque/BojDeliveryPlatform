@@ -196,6 +196,30 @@ class FakeCatalogueRepo implements CatalogueRepo {
     }
     return Promise.resolve();
   }
+  listCategoriesForMerchant(merchantId: number): Promise<CategoryRecord[]> {
+    return Promise.resolve(
+      this.categories
+        .filter((c) => c.merchantId === merchantId)
+        .map(({ merchantId: _m, ...c }) => c),
+    );
+  }
+  listProductsForMerchant(merchantId: number): Promise<ProductRecord[]> {
+    return Promise.resolve(this.products.filter((p) => p.merchantId === merchantId));
+  }
+  listOptionGroupsForProducts(productIds: number[]): Promise<OptionGroupRecord[]> {
+    return Promise.resolve(this.optionGroups.filter((g) => productIds.includes(g.productId)));
+  }
+  listOptionsForGroups(groupIds: number[]): Promise<OptionRecord[]> {
+    return Promise.resolve(this.options.filter((o) => groupIds.includes(o.optionGroupId)));
+  }
+  listInventoryForProducts(productIds: number[]): Promise<InventoryRecord[]> {
+    return Promise.resolve(
+      productIds.flatMap((id) => {
+        const inv = this.inventory.get(id);
+        return inv ? [inv] : [];
+      }),
+    );
+  }
 }
 
 const ME = 'OWNER-ULID';
@@ -294,6 +318,42 @@ describe('catalogue service', () => {
       version: 1,
     });
     expect(await thrownStatus(svc.editProduct(ME, 'OTHER', { expectedVersion: 1 }))).toBe(404);
+  });
+
+  it('assembles the merchant’s own catalogue (incl. unavailable + version + nested options)', async () => {
+    const { svc } = setup();
+    const cat = await svc.createCategory(ME, { name: 'Mains', sortOrder: 0 });
+    const prod = await svc.createProduct(ME, {
+      categoryUlid: cat.ulid,
+      name: 'Pizza',
+      priceCents: 50000,
+    });
+    await svc.setAvailability(ME, prod.ulid, false); // hidden — must still appear for management
+    await svc.setInventory(ME, prod.ulid, { trackStock: true, quantity: 7 });
+    const group = await svc.addOptionGroup(ME, prod.ulid, {
+      name: 'Size',
+      minSelect: 1,
+      maxSelect: 1,
+    });
+    await svc.addOption(ME, group.ulid, { name: 'Large', priceDeltaCents: 10000 });
+
+    const cat2 = await svc.getOwnCatalogue(ME);
+    expect(cat2.merchant.ulid).toBe('M1');
+    expect(cat2.categories.map((c) => c.name)).toContain('Mains');
+    const p = cat2.products.find((x) => x.ulid === prod.ulid);
+    expect(p).toBeDefined();
+    expect(p?.isAvailable).toBe(false);
+    expect(p?.version).toBe(1);
+    expect(p?.categoryUlid).toBe(cat.ulid);
+    expect(p?.inventory).toEqual({ trackStock: true, quantity: 7, reserved: 0 });
+    expect(p?.optionGroups[0]?.name).toBe('Size');
+    expect(p?.optionGroups[0]?.options[0]).toMatchObject({ name: 'Large', priceDeltaCents: 10000 });
+  });
+
+  it('forbids the catalogue read for a caller with no merchant (403)', async () => {
+    const { repo, svc } = setup();
+    repo.context = null;
+    expect(await thrownStatus(svc.getOwnCatalogue(ME))).toBe(403);
   });
 });
 

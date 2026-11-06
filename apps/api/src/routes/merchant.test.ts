@@ -55,6 +55,25 @@ function appWith(catalogueService: CatalogueService) {
 }
 
 const happy: CatalogueService = {
+  getOwnCatalogue: () =>
+    Promise.resolve({
+      merchant: { ulid: 'M1' },
+      categories: [{ ulid: 'C1', name: 'Mains', sortOrder: 0, isActive: true }],
+      products: [
+        {
+          ulid: 'P1',
+          name: 'Ugali',
+          description: null,
+          priceCents: 15000,
+          currency: 'KES',
+          isAvailable: true,
+          version: 1,
+          categoryUlid: 'C1',
+          inventory: { trackStock: true, quantity: 5, reserved: 0 },
+          optionGroups: [],
+        },
+      ],
+    }),
   createCategory: () =>
     Promise.resolve({ ulid: 'C1', name: 'Mains', sortOrder: 0, isActive: true }),
   createProduct: () => Promise.resolve(product),
@@ -87,6 +106,23 @@ describe('merchant catalogue routes (RBAC + validation)', () => {
       .send({ name: 'Ugali', priceCents: 15000 });
     expect(res.status).toBe(201);
     expect(res.body.version).toBe(1);
+  });
+
+  it('returns the merchant’s own catalogue (200)', async () => {
+    const res = await request(appWith(happy))
+      .get('/api/v1/merchant/catalogue')
+      .set('Authorization', `Bearer ${owner()}`);
+    expect(res.status).toBe(200);
+    expect(res.body.merchant.ulid).toBe('M1');
+    expect(res.body.products[0].ulid).toBe('P1');
+    expect(res.body.products[0].version).toBe(1);
+  });
+
+  it('forbids the catalogue read for a customer (403)', async () => {
+    const res = await request(appWith(happy))
+      .get('/api/v1/merchant/catalogue')
+      .set('Authorization', `Bearer ${tokenFor(['customer'])}`);
+    expect(res.status).toBe(403);
   });
 
   it('updates the profile (200)', async () => {

@@ -117,6 +117,16 @@ export interface CatalogueRepo {
     input: { trackStock: boolean; quantity: number },
   ): Promise<InventoryRecord>;
   getInventory(productId: number): Promise<InventoryRecord | null>;
+  /** All categories for a merchant (incl. inactive), for the merchant's own management view. */
+  listCategoriesForMerchant(merchantId: number): Promise<CategoryRecord[]>;
+  /** All products for a merchant (incl. unavailable, carrying `version`), for management. */
+  listProductsForMerchant(merchantId: number): Promise<ProductRecord[]>;
+  /** Option groups for the given products (batched; empty input → empty). */
+  listOptionGroupsForProducts(productIds: number[]): Promise<OptionGroupRecord[]>;
+  /** Options for the given groups (incl. unavailable, batched; empty input → empty). */
+  listOptionsForGroups(groupIds: number[]): Promise<OptionRecord[]>;
+  /** Inventory rows for the given products (batched; empty input → empty). */
+  listInventoryForProducts(productIds: number[]): Promise<InventoryRecord[]>;
   /** Atomically reserve `quantity`. Returns true if reserved (or the product isn't stock-tracked). */
   reserve(productId: number, quantity: number): Promise<boolean>;
   release(productId: number, quantity: number): Promise<void>;
@@ -382,6 +392,49 @@ export function createKnexCatalogueRepo(db: Knex): CatalogueRepo {
       const row = (await db('inventory').where({ product_id: productId }).first()) as
         InventoryRowDb | undefined;
       return row ? mapInventory(row) : null;
+    },
+
+    async listCategoriesForMerchant(merchantId) {
+      const rows = (await db('category')
+        .where({ merchant_id: merchantId })
+        .orderBy('sort_order')
+        .orderBy('id')) as CategoryRowDb[];
+      return rows.map(mapCategory);
+    },
+
+    async listProductsForMerchant(merchantId) {
+      const rows = (await db('product')
+        .where({ merchant_id: merchantId })
+        .orderBy('name')) as ProductRowDb[];
+      return rows.map(mapProduct);
+    },
+
+    async listOptionGroupsForProducts(productIds) {
+      if (productIds.length === 0) {
+        return [];
+      }
+      const rows = (await db('product_option_group')
+        .whereIn('product_id', productIds)
+        .orderBy('id')) as OptionGroupRowDb[];
+      return rows.map(mapOptionGroup);
+    },
+
+    async listOptionsForGroups(groupIds) {
+      if (groupIds.length === 0) {
+        return [];
+      }
+      const rows = (await db('product_option')
+        .whereIn('option_group_id', groupIds)
+        .orderBy('id')) as OptionRowDb[];
+      return rows.map(mapOption);
+    },
+
+    async listInventoryForProducts(productIds) {
+      if (productIds.length === 0) {
+        return [];
+      }
+      const rows = (await db('inventory').whereIn('product_id', productIds)) as InventoryRowDb[];
+      return rows.map(mapInventory);
     },
 
     async reserve(productId, quantity) {
