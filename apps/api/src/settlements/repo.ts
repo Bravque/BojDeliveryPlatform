@@ -70,6 +70,12 @@ export interface SettlementsRepo {
   lockSettlementByUlid(ulid: string): Promise<SettlementRecord | null>;
   setSettlementApproved(settlementId: number, approvedBy: number): Promise<void>;
   listSettlements(): Promise<SettlementRecord[]>;
+  /** The merchant a staff user belongs to (first match), for the merchant-scoped earnings view. */
+  findMerchantForStaffUlid(
+    userUlid: string,
+  ): Promise<{ id: number; ulid: string; name: string } | null>;
+  /** All settlements for one merchant, newest first (merchant earnings view). */
+  listSettlementsForMerchant(merchantId: number): Promise<SettlementRecord[]>;
 }
 
 interface SettlementRowDb {
@@ -240,6 +246,26 @@ export function createKnexSettlementsRepo(exec: Knex): SettlementsRepo {
     async listSettlements() {
       const rows = (await exec('settlement')
         .join('merchant', 'merchant.id', 'settlement.merchant_id')
+        .orderBy('settlement.id', 'desc')
+        .select(SETTLEMENT_COLUMNS)) as SettlementRowDb[];
+      return rows.map(mapSettlement);
+    },
+
+    async findMerchantForStaffUlid(userUlid) {
+      const row = (await exec('merchant_user')
+        .join('user', 'user.id', 'merchant_user.user_id')
+        .join('merchant', 'merchant.id', 'merchant_user.merchant_id')
+        .where('user.ulid', userUlid)
+        .orderBy('merchant.id', 'asc')
+        .first('merchant.id as id', 'merchant.ulid as ulid', 'merchant.name as name')) as
+        { id: number | string; ulid: string; name: string } | undefined;
+      return row ? { id: Number(row.id), ulid: row.ulid, name: row.name } : null;
+    },
+
+    async listSettlementsForMerchant(merchantId) {
+      const rows = (await exec('settlement')
+        .join('merchant', 'merchant.id', 'settlement.merchant_id')
+        .where('settlement.merchant_id', merchantId)
         .orderBy('settlement.id', 'desc')
         .select(SETTLEMENT_COLUMNS)) as SettlementRowDb[];
       return rows.map(mapSettlement);

@@ -82,6 +82,7 @@ const fulfillmentService: FulfillmentService = {
   rejectOrder: () => Promise.resolve(fulfilled('rejected')),
   listMerchantOrders: () =>
     Promise.resolve({ merchant: { ulid: 'M1', name: 'Joe Kitchen' }, orders: [] }),
+  getMerchantOrder: () => Promise.reject(new Error('not used')),
 };
 
 function app() {

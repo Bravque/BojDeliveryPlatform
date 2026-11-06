@@ -44,6 +44,7 @@ const merchantService: MerchantService = {
 };
 
 const catalogueService: CatalogueService = {
+  getOwnCatalogue: () => Promise.reject(new Error('not used')),
   createCategory: () => Promise.reject(new Error('not used')),
   createProduct: () => Promise.reject(new Error('not used')),
   editProduct: () => Promise.reject(new Error('not used')),

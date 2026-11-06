@@ -30,6 +30,41 @@ export interface MerchantOrdersView {
   orders: MerchantOrderSummary[];
 }
 
+export interface MerchantOrderItemOption {
+  name: string;
+  priceDeltaCents: number;
+}
+
+export interface MerchantOrderItem {
+  productUlid: string;
+  name: string;
+  unitPriceCents: number;
+  quantity: number;
+  lineTotalCents: number;
+  options: MerchantOrderItemOption[];
+}
+
+/**
+ * A single order's detail for the merchant ticket: what to prepare (line items + chosen options)
+ * plus the money breakdown and status. Customer contact/address is intentionally omitted — the
+ * rider handles delivery (PIN proof), so the kitchen needs the items, not the customer's PII.
+ */
+export interface MerchantOrderDetail {
+  ulid: string;
+  orderNumber: string;
+  status: string;
+  paymentStatus: string;
+  currency: string;
+  items: MerchantOrderItem[];
+  subtotalCents: number;
+  deliveryFeeCents: number;
+  serviceFeeCents: number;
+  discountCents: number;
+  commissionCents: number;
+  totalCents: number;
+  createdAt: string;
+}
+
 export interface FulfillmentServiceDeps {
   withTransaction: <T>(work: (repo: OrdersRepo) => Promise<T>) => Promise<T>;
   /**
@@ -136,6 +171,47 @@ export function createFulfillmentService(deps: FulfillmentServiceDeps) {
     return advance(actor, orderUlid, 'rejected', reason);
   }
 
+  /** One order's full detail (line items + options + money breakdown), merchant-ownership gated. */
+  async function getMerchantOrder(actor: Actor, orderUlid: string): Promise<MerchantOrderDetail> {
+    return withTransaction(async (repo) => {
+      const order = await repo.findOrderByUlid(orderUlid);
+      if (!order) {
+        throw notFound('Order not found');
+      }
+      await assertMerchantAccess(repo, actor, order.merchantId);
+      const items = await repo.getOrderItems(order.id);
+      const options = await repo.getOrderItemOptions(items.map((i) => i.id));
+      const optionsByItem = new Map<number, MerchantOrderItemOption[]>();
+      for (const opt of options) {
+        const list = optionsByItem.get(opt.orderItemId) ?? [];
+        list.push({ name: opt.nameSnapshot, priceDeltaCents: opt.priceDeltaCents });
+        optionsByItem.set(opt.orderItemId, list);
+      }
+      return {
+        ulid: order.ulid,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        currency: order.currency,
+        items: items.map((i) => ({
+          productUlid: i.productUlid,
+          name: i.nameSnapshot,
+          unitPriceCents: i.unitPriceCents,
+          quantity: i.quantity,
+          lineTotalCents: i.lineTotalCents,
+          options: optionsByItem.get(i.id) ?? [],
+        })),
+        subtotalCents: order.subtotalCents,
+        deliveryFeeCents: order.deliveryFeeCents,
+        serviceFeeCents: order.serviceFeeCents,
+        discountCents: order.discountCents,
+        commissionCents: order.commissionCents,
+        totalCents: order.totalCents,
+        createdAt: order.createdAt.toISOString(),
+      };
+    });
+  }
+
   /** The merchant dashboard list: the caller's merchant + its orders (newest first). */
   async function listMerchantOrders(actor: Actor): Promise<MerchantOrdersView> {
     return withTransaction(async (repo) => {
@@ -158,7 +234,14 @@ export function createFulfillmentService(deps: FulfillmentServiceDeps) {
     });
   }
 
-  return { acceptOrder, startPreparing, markReadyForPickup, rejectOrder, listMerchantOrders };
+  return {
+    acceptOrder,
+    startPreparing,
+    markReadyForPickup,
+    rejectOrder,
+    listMerchantOrders,
+    getMerchantOrder,
+  };
 }
 
 export type FulfillmentService = ReturnType<typeof createFulfillmentService>;

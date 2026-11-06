@@ -204,7 +204,25 @@ export function createSettlementService(deps: SettlementServiceDeps) {
     return rows.map(toView);
   }
 
-  return { generateSettlements, approveSettlement, getSettlement, listSettlements };
+  /** The caller merchant's own settlements (earnings view), newest first. */
+  async function listMerchantSettlements(actor: Actor): Promise<SettlementView[]> {
+    return withTransaction(async (repo) => {
+      const merchant = await repo.findMerchantForStaffUlid(actor.ulid);
+      if (!merchant) {
+        throw notFound('No merchant is associated with this account');
+      }
+      const rows = await repo.listSettlementsForMerchant(merchant.id);
+      return rows.map(toView);
+    });
+  }
+
+  return {
+    generateSettlements,
+    approveSettlement,
+    getSettlement,
+    listSettlements,
+    listMerchantSettlements,
+  };
 }
 
 export type SettlementService = ReturnType<typeof createSettlementService>;

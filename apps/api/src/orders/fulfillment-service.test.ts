@@ -123,3 +123,54 @@ describe('fulfillment service', () => {
     expect(bad.emitted).toEqual([]); // no emit when the transaction never committed
   });
 });
+
+function detailSetup(opts: { staff?: string[] } = {}) {
+  const order = orderRecord();
+  const repo = {
+    findOrderByUlid: (ulid: string) => Promise.resolve(ulid === order.ulid ? order : null),
+    findMerchantStaffUlids: () => Promise.resolve(opts.staff ?? ['OWNER']),
+    getOrderItems: () =>
+      Promise.resolve([
+        {
+          id: 11,
+          productUlid: 'P1',
+          nameSnapshot: 'Pizza',
+          unitPriceCents: 50_000,
+          quantity: 2,
+          lineTotalCents: 120_000,
+        },
+      ]),
+    getOrderItemOptions: (ids: number[]) =>
+      Promise.resolve(
+        ids.includes(11)
+          ? [{ orderItemId: 11, nameSnapshot: 'Large', priceDeltaCents: 10_000 }]
+          : [],
+      ),
+  } as unknown as OrdersRepo;
+  const svc = createFulfillmentService({ withTransaction: (work) => work(repo) });
+  return { svc };
+}
+
+describe('fulfillment service — merchant order detail', () => {
+  it('assembles line items + options + money breakdown for an owner', async () => {
+    const { svc } = detailSetup();
+    const detail = await svc.getMerchantOrder(OWNER, 'ORD1');
+    expect(detail.orderNumber).toBe('BOJ-ORD001');
+    expect(detail.totalCents).toBe(40_200);
+    expect(detail.items).toHaveLength(1);
+    expect(detail.items[0]).toMatchObject({ name: 'Pizza', quantity: 2, lineTotalCents: 120_000 });
+    expect(detail.items[0]?.options[0]).toEqual({ name: 'Large', priceDeltaCents: 10_000 });
+  });
+
+  it('forbids a non-owner merchant (403) and 404s an unknown order', async () => {
+    const { svc } = detailSetup({ staff: ['OWNER'] });
+    expect(await thrownStatus(svc.getMerchantOrder(STRANGER, 'ORD1'))).toBe(403);
+    expect(await thrownStatus(svc.getMerchantOrder(OWNER, 'NOPE'))).toBe(404);
+  });
+
+  it('lets an admin read any order detail', async () => {
+    const { svc } = detailSetup({ staff: [] });
+    const detail = await svc.getMerchantOrder(ADMIN, 'ORD1');
+    expect(detail.items).toHaveLength(1);
+  });
+});

@@ -46,6 +46,7 @@ import {
   type PayoutsModule,
 } from './routes/payouts';
 import { settlementsRouter, type SettlementsModule } from './routes/settlements';
+import { merchantEarningsRouter } from './routes/merchant-earnings';
 import { adminRiderRouter, presenceRouter, riderRouter, type RidersModule } from './routes/riders';
 
 export interface AppDeps {
@@ -217,6 +218,9 @@ export function createApp(deps: AppDeps): Express {
     if (deps.settlements) {
       apiV1.use(
         settlementsRouter(deps.settlements.settlementService, deps.settlements.requireAuth),
+      );
+      apiV1.use(
+        merchantEarningsRouter(deps.settlements.settlementService, deps.settlements.requireAuth),
       );
     }
     if (deps.payouts) {
