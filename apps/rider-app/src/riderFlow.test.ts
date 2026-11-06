@@ -34,6 +34,9 @@ function makeApi(over: Partial<ApiClient> = {}): ApiClient {
     pickup: vi.fn(() => Promise.resolve(delivery('picked_up'))),
     startDelivery: vi.fn(() => Promise.resolve(delivery('out_for_delivery'))),
     completeDelivery: vi.fn(() => Promise.resolve(delivery('delivered'))),
+    getMe: vi.fn(() =>
+      Promise.resolve({ status: 'approved', vehicleType: 'motorbike', isOnline: true }),
+    ),
     ...over,
   };
 }
@@ -155,6 +158,27 @@ describe('rider flow — critical journey', () => {
     await model.verifyOtp('123456'); // signed in but still offline
     await model.onOfferPush();
     expect(api.listOffers).not.toHaveBeenCalled();
+  });
+
+  it('tab nav: goToTab switches tabs, Account loads the profile, sign-out resets', async () => {
+    const api = makeApi();
+    const model = createRiderModel(api);
+    await model.verifyOtp('123456');
+    expect(model.getState().screen).toBe('offers');
+
+    model.goToTab('delivery');
+    expect(model.getState().screen).toBe('delivery');
+
+    model.goToTab('account');
+    await new Promise((r) => setTimeout(r, 0)); // loadProfile fires async
+    const s = model.getState();
+    expect(s.screen).toBe('account');
+    expect(api.getMe).toHaveBeenCalled();
+    expect(s.me?.vehicleType).toBe('motorbike');
+
+    model.signOut();
+    expect(model.getState().screen).toBe('phone');
+    expect(model.getState().token).toBeNull();
   });
 
   it('notifies subscribers on state changes', async () => {

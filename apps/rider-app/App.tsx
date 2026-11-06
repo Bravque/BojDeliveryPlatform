@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, SafeAreaView, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import {
   type ApiClient,
@@ -7,7 +7,13 @@ import {
   type RiderOfferView,
   createHttpApiClient,
 } from './src/api';
-import { type RiderModel, type RiderState, createRiderModel } from './src/riderFlow';
+import {
+  type RiderModel,
+  type RiderState,
+  type Tab,
+  createRiderModel,
+  isTab,
+} from './src/riderFlow';
 import { type ConnectRiderSocket, makeConnectRiderSocket } from './src/socket';
 import { API_BASE_URL } from './src/config';
 import {
@@ -18,7 +24,6 @@ import {
   Muted,
   PaddedScreen,
   PrimaryButton,
-  Screen,
   SecondaryButton,
   SectionTitle,
   Tag,
@@ -71,8 +76,58 @@ export function RiderApp({ api, connectSocket }: AppProps = {}): JSX.Element {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       <StatusBar style="dark" />
-      <Screen>{renderScreen(model, state, banner)}</Screen>
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        {renderScreen(model, state, banner)}
+      </View>
+      {isTab(state.screen) ? (
+        <TabBar active={state.screen} onSelect={(t) => model.goToTab(t)} />
+      ) : null}
     </SafeAreaView>
+  );
+}
+
+function TabBar({ active, onSelect }: { active: Tab; onSelect: (t: Tab) => void }): JSX.Element {
+  const items: { tab: Tab; icon: string; label: string }[] = [
+    { tab: 'offers', icon: '🛵', label: 'Shift' },
+    { tab: 'delivery', icon: '📦', label: 'Delivery' },
+    { tab: 'account', icon: '👤', label: 'Account' },
+  ];
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        borderTopWidth: 1,
+        borderTopColor: colors.border,
+        backgroundColor: colors.surface,
+        paddingTop: 8,
+        paddingBottom: 10,
+      }}
+    >
+      {items.map((it) => {
+        const on = it.tab === active;
+        return (
+          <Pressable
+            key={it.tab}
+            accessibilityRole="button"
+            accessibilityLabel={it.label}
+            onPress={() => onSelect(it.tab)}
+            style={{ flex: 1, alignItems: 'center' }}
+          >
+            <Text style={{ fontSize: 20, opacity: on ? 1 : 0.45 }}>{it.icon}</Text>
+            <Text
+              style={{
+                fontSize: 11,
+                marginTop: 2,
+                fontWeight: on ? '800' : '600',
+                color: on ? colors.primary : colors.muted,
+              }}
+            >
+              {it.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -96,6 +151,8 @@ function renderScreen(
       return <OffersScreen model={model} state={state} banner={banner} />;
     case 'delivery':
       return <DeliveryScreen model={model} delivery={state.delivery} banner={banner} />;
+    case 'account':
+      return <AccountScreen model={model} state={state} />;
   }
 }
 
@@ -290,7 +347,23 @@ function DeliveryScreen({
   banner: JSX.Element | null;
 }): JSX.Element {
   const [pin, setPin] = useState('');
-  const status = delivery?.deliveryStatus ?? '';
+
+  if (!delivery) {
+    return (
+      <ScrollView contentContainerStyle={{ padding: 18 }}>
+        <Title>Delivery</Title>
+        <Card>
+          <Text style={{ fontSize: 34, textAlign: 'center' }}>📦</Text>
+          <Text style={{ color: colors.muted, textAlign: 'center', marginTop: 6 }}>
+            No active delivery. Accept an offer on the Shift tab to get going.
+          </Text>
+        </Card>
+        <PrimaryButton title="Go to Shift" onPress={() => model.goToTab('offers')} />
+      </ScrollView>
+    );
+  }
+
+  const status = delivery.deliveryStatus;
   const currentIndex = STEPS.findIndex((s) => s.key === status);
 
   return (
@@ -400,5 +473,62 @@ function DeliveryScreen({
         <SecondaryButton title="Back to offers" onPress={() => model.backToOffers()} />
       </View>
     </ScrollView>
+  );
+}
+
+// ---- account tab -------------------------------------------------------------------------------
+
+function AccountScreen({ model, state }: { model: RiderModel; state: RiderState }): JSX.Element {
+  const me = state.me;
+  return (
+    <ScrollView contentContainerStyle={{ padding: 18 }}>
+      <Title>Account</Title>
+      <Card>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <View
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: 26,
+              backgroundColor: colors.surfaceAlt,
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginRight: 14,
+            }}
+          >
+            <Text style={{ fontSize: 26 }}>🛵</Text>
+          </View>
+          <View>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>
+              Signed in as
+            </Text>
+            <Text style={{ color: colors.muted, marginTop: 2 }}>{state.phone}</Text>
+          </View>
+        </View>
+      </Card>
+      {me ? (
+        <Card>
+          <AccountRow label="Status" value={me.status} />
+          <AccountRow label="Vehicle" value={me.vehicleType} />
+          <AccountRow label="Online" value={state.online ? 'Yes' : 'No'} />
+        </Card>
+      ) : null}
+      {state.error ? <Alert message={state.error} /> : null}
+      <SecondaryButton title="Sign out" onPress={() => model.signOut()} />
+      <Text style={{ color: colors.muted, textAlign: 'center', marginTop: 16, fontSize: 12 }}>
+        Boj Courier · demo build
+      </Text>
+    </ScrollView>
+  );
+}
+
+function AccountRow({ label, value }: { label: string; value: string }): JSX.Element {
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 }}>
+      <Text style={{ color: colors.muted, fontWeight: '600' }}>{label}</Text>
+      <Text style={{ color: colors.text, fontWeight: '700', textTransform: 'capitalize' }}>
+        {value}
+      </Text>
+    </View>
   );
 }
