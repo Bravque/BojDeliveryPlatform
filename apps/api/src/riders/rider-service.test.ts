@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { AuditEntry } from '../auth/repo';
 import { createRiderService, type Actor } from './rider-service';
-import type { RiderRecord, RiderRepo, RiderStatus, VehicleType } from './repo';
+import type { RiderEarnings, RiderRecord, RiderRepo, RiderStatus, VehicleType } from './repo';
 
 class FakeRiderRepo implements RiderRepo {
   private readonly usersByUlid = new Map<string, number>();
   private readonly ulidByUserId = new Map<number, string>();
   readonly riders: RiderRecord[] = [];
   readonly globalRoles: { userId: number; roleCode: string }[] = [];
+  readonly earningsByUser = new Map<number, RiderEarnings>();
 
   addUser(ulid: string, id: number): void {
     this.usersByUlid.set(ulid, id);
@@ -28,6 +29,7 @@ class FakeRiderRepo implements RiderRepo {
       lastLng: null,
       lastPingAt: null,
       ratingAvg: null,
+      payoutPhoneE164: null,
     };
     this.riders.push(r);
     return Promise.resolve(r);
@@ -64,6 +66,18 @@ class FakeRiderRepo implements RiderRepo {
       r.lastPingAt = new Date();
     }
     return Promise.resolve();
+  }
+  setPayoutPhone(userId: number, phoneE164: string | null): Promise<void> {
+    const r = this.riders.find((x) => x.userId === userId);
+    if (r) {
+      r.payoutPhoneE164 = phoneE164;
+    }
+    return Promise.resolve();
+  }
+  getEarnings(userId: number): Promise<RiderEarnings> {
+    return Promise.resolve(
+      this.earningsByUser.get(userId) ?? { deliveries: 0, totalEarnedCents: 0 },
+    );
   }
 }
 
@@ -148,5 +162,28 @@ describe('rider onboarding service', () => {
     await svc.applyAsRider(APPLICANT, { vehicleType: 'car' });
     const me = await svc.getOwnRider(APPLICANT);
     expect(me.vehicleType).toBe('car');
+  });
+
+  it('returns the rider’s own earnings', async () => {
+    const { svc, repo } = setup();
+    repo.earningsByUser.set(42, { deliveries: 3, totalEarnedCents: 21_000 });
+    const earnings = await svc.getOwnEarnings(APPLICANT);
+    expect(earnings).toEqual({ deliveries: 3, totalEarnedCents: 21_000 });
+  });
+
+  it('sets a payout destination (normalises to E.164) and reflects it in the profile', async () => {
+    const { svc, recorded } = setup();
+    await svc.applyAsRider(APPLICANT, { vehicleType: 'motorbike' });
+    const updated = await svc.setPayoutDestination(APPLICANT, '0712345678');
+    expect(updated.payoutPhoneE164).toBe('+254712345678');
+    expect((await svc.getOwnRider(APPLICANT)).payoutPhoneE164).toBe('+254712345678');
+    expect(recorded.at(-1)).toMatchObject({ action: 'rider.payout_destination.set' });
+  });
+
+  it('rejects an invalid payout phone with 400, and 404 when not a rider', async () => {
+    const { svc } = setup();
+    await svc.applyAsRider(APPLICANT, { vehicleType: 'motorbike' });
+    expect(await thrownStatus(svc.setPayoutDestination(APPLICANT, 'not-a-phone'))).toBe(400);
+    expect(await thrownStatus(svc.setPayoutDestination(ADMIN, '0712345678'))).toBe(404);
   });
 });

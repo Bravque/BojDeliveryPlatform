@@ -28,12 +28,16 @@ const summary: RiderSummary = {
   status: 'pending',
   vehicleType: 'motorbike',
   isOnline: false,
+  payoutPhoneE164: null,
 };
 const riderService: RiderService = {
   applyAsRider: () => Promise.resolve(summary),
   approveRider: () => Promise.resolve({ ...summary, status: 'approved' }),
   suspendRider: () => Promise.resolve({ ...summary, status: 'suspended' }),
   getOwnRider: () => Promise.resolve(summary),
+  getOwnEarnings: () => Promise.resolve({ deliveries: 2, totalEarnedCents: 14_000 }),
+  setPayoutDestination: () =>
+    Promise.resolve({ ...summary, status: 'approved', payoutPhoneE164: '+254712345678' }),
 };
 
 const presence: PresenceView = {
@@ -90,6 +94,39 @@ describe('rider self-service', () => {
       .set('Authorization', `Bearer ${tokenFor(['customer'])}`);
     expect(res.status).toBe(200);
     expect(res.body.vehicleType).toBe('motorbike');
+  });
+
+  it('earnings: forbids a non-rider (403), returns the figure for a rider (200)', async () => {
+    expect(
+      (
+        await request(app())
+          .get('/api/v1/rider/earnings')
+          .set('Authorization', `Bearer ${tokenFor(['customer'])}`)
+      ).status,
+    ).toBe(403);
+    const ok = await request(app())
+      .get('/api/v1/rider/earnings')
+      .set('Authorization', `Bearer ${tokenFor(['rider'])}`);
+    expect(ok.status).toBe(200);
+    expect(ok.body).toEqual({ deliveries: 2, totalEarnedCents: 14_000 });
+  });
+
+  it('payout destination: rider sets it (200), customer forbidden (403)', async () => {
+    const ok = await request(app())
+      .post('/api/v1/rider/payout-destination')
+      .set('Authorization', `Bearer ${tokenFor(['rider'])}`)
+      .send({ phone: '0712345678' });
+    expect(ok.status).toBe(200);
+    expect(ok.body.payoutPhoneE164).toBe('+254712345678');
+
+    expect(
+      (
+        await request(app())
+          .post('/api/v1/rider/payout-destination')
+          .set('Authorization', `Bearer ${tokenFor(['customer'])}`)
+          .send({ phone: '0712345678' })
+      ).status,
+    ).toBe(403);
   });
 });
 

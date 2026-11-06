@@ -18,6 +18,7 @@ class FakeRiderRepo implements RiderRepo {
       lastLng: null,
       lastPingAt: over.lastPingAt ?? null,
       ratingAvg: null,
+      payoutPhoneE164: null,
     };
   }
 
@@ -51,6 +52,12 @@ class FakeRiderRepo implements RiderRepo {
   }
   grantGlobalRole(): Promise<void> {
     return Promise.resolve();
+  }
+  setPayoutPhone(): Promise<void> {
+    return Promise.resolve();
+  }
+  getEarnings(): Promise<{ deliveries: number; totalEarnedCents: number }> {
+    return Promise.resolve({ deliveries: 0, totalEarnedCents: 0 });
   }
 }
 

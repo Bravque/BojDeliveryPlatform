@@ -20,6 +20,14 @@ export interface RiderRecord {
   lastLng: number | null;
   lastPingAt: Date | null;
   ratingAvg: number | null;
+  /** M-Pesa withdrawal destination; null = fall back to the sign-in number on payout. */
+  payoutPhoneE164: string | null;
+}
+
+/** A rider's lifetime earnings from completed deliveries. */
+export interface RiderEarnings {
+  deliveries: number;
+  totalEarnedCents: number;
 }
 
 export interface RiderRepo {
@@ -28,6 +36,10 @@ export interface RiderRepo {
   findRiderByUserUlid(ulid: string): Promise<RiderRecord | null>;
   findRiderByUserId(userId: number): Promise<RiderRecord | null>;
   setRiderStatus(userId: number, status: RiderStatus): Promise<void>;
+  /** Set (or clear, with null) the rider's canonical-E.164 withdrawal destination. */
+  setPayoutPhone(userId: number, phoneE164: string | null): Promise<void>;
+  /** Sum of rider fees over this rider's delivered deliveries. */
+  getEarnings(userId: number): Promise<RiderEarnings>;
   /** Idempotently grant a global role (user_role) so the policy layer recognizes the user. */
   grantGlobalRole(userId: number, roleCode: string): Promise<void>;
 
@@ -47,6 +59,7 @@ interface RiderRowDb {
   last_lng: number | string | null;
   last_ping_at: string | Date | null;
   rating_avg: number | string | null;
+  payout_phone_e164: string | null;
 }
 
 function mapRider(row: RiderRowDb): RiderRecord {
@@ -60,6 +73,7 @@ function mapRider(row: RiderRowDb): RiderRecord {
     lastLng: row.last_lng === null ? null : Number(row.last_lng),
     lastPingAt: row.last_ping_at === null ? null : new Date(row.last_ping_at),
     ratingAvg: row.rating_avg === null ? null : Number(row.rating_avg),
+    payoutPhoneE164: row.payout_phone_e164 ?? null,
   };
 }
 
@@ -73,6 +87,7 @@ const RIDER_COLUMNS = [
   'rider_profile.last_lng',
   'rider_profile.last_ping_at',
   'rider_profile.rating_avg',
+  'rider_profile.payout_phone_e164',
 ];
 
 export function createKnexRiderRepo(db: Knex): RiderRepo {
@@ -110,6 +125,22 @@ export function createKnexRiderRepo(db: Knex): RiderRepo {
 
     async setRiderStatus(userId, status) {
       await db('rider_profile').where({ user_id: userId }).update({ status });
+    },
+
+    async setPayoutPhone(userId, phoneE164) {
+      await db('rider_profile').where({ user_id: userId }).update({ payout_phone_e164: phoneE164 });
+    },
+
+    async getEarnings(userId) {
+      const row = (await db('delivery')
+        .where({ rider_id: userId, status: 'delivered' })
+        .count({ deliveries: '*' })
+        .sum({ total: 'rider_fee_cents' })
+        .first()) as { deliveries: number | string; total: number | string | null } | undefined;
+      return {
+        deliveries: Number(row?.deliveries ?? 0),
+        totalEarnedCents: Number(row?.total ?? 0),
+      };
     },
 
     async setOnline(userId, isOnline) {
