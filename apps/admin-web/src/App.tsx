@@ -1,9 +1,12 @@
-import { useCallback, useState } from 'react';
-import type { ApiClient, Period, ReconciliationReport, ReportSummary } from './api';
+import { useState } from 'react';
+import type { ApiClient, Period } from './api';
+import { OverviewView } from './overview';
+import { AuditView } from './audit';
+import { Brand, Button, EmptyState, Field } from './ui';
 
 export interface AppProps {
   api: ApiClient;
-  /** Initial reporting window; defaults to the last 30 days. Injectable for deterministic tests. */
+  /** Initial reporting window for the overview; defaults to the last 30 days. Injectable for tests. */
   initialPeriod?: Period;
 }
 
@@ -14,216 +17,126 @@ export function defaultPeriod(now: Date = new Date()): Period {
   return { periodStart: start, periodEnd: end };
 }
 
-function kes(cents: number): string {
-  return `KES ${(cents / 100).toFixed(2)}`;
-}
+type View =
+  'overview' | 'merchants' | 'riders' | 'settlements' | 'payouts' | 'refunds' | 'config' | 'audit';
 
-function pct(rate: number): string {
-  return `${(rate * 100).toFixed(2)}%`;
-}
+const NAV: { key: View; label: string; icon: string }[] = [
+  { key: 'overview', label: 'Overview', icon: '📊' },
+  { key: 'merchants', label: 'Merchants', icon: '🏪' },
+  { key: 'riders', label: 'Riders', icon: '🛵' },
+  { key: 'settlements', label: 'Settlements', icon: '🧾' },
+  { key: 'payouts', label: 'Payouts', icon: '💸' },
+  { key: 'refunds', label: 'Refunds', icon: '↩️' },
+  { key: 'config', label: 'Config', icon: '⚙️' },
+  { key: 'audit', label: 'Audit', icon: '🔎' },
+];
 
 /**
- * Admin dashboard (MVP critical journey): log in as an admin/ops/finance user, view the
- * period report + reconciliation overview, and run the (idempotent) reconcile sweep. Canonical
- * state always comes from REST; the reconcile action re-fetches the report afterwards.
+ * Admin console shell. The access token is held in memory only (a reload returns to the login form —
+ * a deliberate choice for a sensitive back-office console, no localStorage). Sections render their
+ * own data from REST; those not yet built show a placeholder until their increment lands.
  */
 export function App({ api, initialPeriod }: AppProps): JSX.Element {
   const [token, setToken] = useState<string | null>(null);
-  const [period, setPeriod] = useState<Period>(initialPeriod ?? defaultPeriod());
-  const [summary, setSummary] = useState<ReportSummary | null>(null);
-  const [report, setReport] = useState<ReconciliationReport | null>(null);
-  const [alert, setAlert] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [view, setView] = useState<View>('overview');
+  const [loginError, setLoginError] = useState<string | null>(null);
 
-  const load = useCallback(
-    async (tok: string, p: Period) => {
-      const [s, r] = await Promise.all([
-        api.getReportSummary(tok, p),
-        api.getReconciliationReport(tok),
-      ]);
-      setSummary(s);
-      setReport(r);
-    },
-    [api],
-  );
+  const period = initialPeriod ?? defaultPeriod();
 
   async function onLogin(email: string, password: string): Promise<void> {
-    setError(null);
-    setBusy(true);
+    setLoginError(null);
     try {
       const { access } = await api.login(email, password);
       setToken(access);
-      await load(access, period);
     } catch {
-      setError('Login failed');
-    } finally {
-      setBusy(false);
+      setLoginError('Login failed. Check your email and password.');
     }
   }
 
-  async function onRefresh(): Promise<void> {
-    if (!token) {
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      await load(token, period);
-      setAlert('Refreshed');
-    } catch {
-      setError('Failed to load');
-    } finally {
-      setBusy(false);
-    }
+  function onLogout(): void {
+    setToken(null);
+    setView('overview');
   }
 
-  async function onReconcile(): Promise<void> {
-    if (!token) {
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await api.runReconcile(token);
-      setAlert(
-        `Reconcile complete — scanned ${result.scanned}, captured ${result.captured}, ` +
-          `failed ${result.failed}, still pending ${result.stillPending}`,
-      );
-      await load(token, period);
-    } catch {
-      setError('Reconcile failed');
-    } finally {
-      setBusy(false);
-    }
+  if (!token) {
+    return <LoginForm onLogin={onLogin} error={loginError} />;
   }
 
-  if (!token || !summary || !report) {
-    return <LoginForm onLogin={onLogin} error={error} busy={busy} />;
-  }
+  const active = NAV.find((n) => n.key === view)!;
 
   return (
-    <main>
-      <h1>Admin dashboard</h1>
-      {alert && <p role="status">{alert}</p>}
-      {error && <p role="alert">{error}</p>}
+    <div className="shell">
+      <aside className="sidebar">
+        <Brand />
+        <nav className="nav" aria-label="Sections">
+          {NAV.map((n) => (
+            <button
+              key={n.key}
+              type="button"
+              className={`nav__item${view === n.key ? ' nav__item--active' : ''}`}
+              aria-current={view === n.key ? 'page' : undefined}
+              onClick={() => setView(n.key)}
+            >
+              <span className="nav__icon">{n.icon}</span>
+              {n.label}
+            </button>
+          ))}
+        </nav>
+      </aside>
 
-      <section aria-label="Reporting period">
-        <label>
-          From
-          <input
-            type="date"
-            aria-label="Period start"
-            value={period.periodStart}
-            onChange={(e) => setPeriod((p) => ({ ...p, periodStart: e.target.value }))}
-          />
-        </label>
-        <label>
-          To
-          <input
-            type="date"
-            aria-label="Period end"
-            value={period.periodEnd}
-            onChange={(e) => setPeriod((p) => ({ ...p, periodEnd: e.target.value }))}
-          />
-        </label>
-        <button type="button" onClick={() => void onRefresh()} disabled={busy}>
-          Refresh
-        </button>
-      </section>
+      <div className="main">
+        <header className="topbar">
+          <h1 className="topbar__title">{active.label}</h1>
+          <div className="topbar__spacer" />
+          <Button variant="ghost" small onClick={onLogout}>
+            Log out
+          </Button>
+        </header>
 
-      <section aria-label="Summary">
-        <h2>
-          Summary {summary.periodStart} → {summary.periodEnd}
-        </h2>
-        <dl>
-          <dt>GMV</dt>
-          <dd>{kes(summary.gmvCents)}</dd>
-          <dt>Orders</dt>
-          <dd>{summary.orderCount}</dd>
-          <dt>Delivered</dt>
-          <dd>{summary.deliveredCount}</dd>
-          <dt>Cancel rate</dt>
-          <dd>{pct(summary.cancelRate)}</dd>
-          <dt>Refund rate</dt>
-          <dd>{pct(summary.refundRate)}</dd>
-          <dt>Active riders</dt>
-          <dd>{summary.rider.activeRiders}</dd>
-          <dt>Rider deliveries</dt>
-          <dd>{summary.rider.deliveries}</dd>
-          <dt>Rider fees</dt>
-          <dd>{kes(summary.rider.feesCents)}</dd>
-        </dl>
-      </section>
-
-      <section aria-label="Reconciliation">
-        <h2>Reconciliation</h2>
-        <p data-testid="ledger-balanced">
-          Ledger {report.ledgerBalanced ? 'balanced' : 'IMBALANCED'}
-          {report.imbalancedTransactionCount > 0 &&
-            ` (${report.imbalancedTransactionCount} unbalanced txns)`}
-        </p>
-        <button type="button" onClick={() => void onReconcile()} disabled={busy}>
-          Run reconcile
-        </button>
-        {report.items.length === 0 ? (
-          <p>No divergence.</p>
-        ) : (
-          <ul>
-            {report.items.map((it) => (
-              <li key={it.paymentUlid} data-testid={`divergence-${it.paymentUlid}`}>
-                {it.paymentUlid} — {it.classification} (local {it.localStatus} / remote{' '}
-                {it.remoteStatus}, {kes(it.amountCents)})
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </main>
+        <main className="content">
+          {view === 'overview' && <OverviewView api={api} token={token} initialPeriod={period} />}
+          {view === 'audit' && <AuditView api={api} token={token} />}
+          {view !== 'overview' && view !== 'audit' && (
+            <EmptyState>{active.label} — coming in a later increment.</EmptyState>
+          )}
+        </main>
+      </div>
+    </div>
   );
 }
 
 function LoginForm({
   onLogin,
   error,
-  busy,
 }: {
   onLogin: (email: string, password: string) => void;
   error: string | null;
-  busy: boolean;
 }): JSX.Element {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        onLogin(email, password);
-      }}
-    >
-      <h1>Admin sign in</h1>
-      {error && <p role="alert">{error}</p>}
-      <label>
-        Email
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          aria-label="Email"
-        />
-      </label>
-      <label>
-        Password
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          aria-label="Password"
-        />
-      </label>
-      <button type="submit" disabled={busy}>
-        Sign in
-      </button>
-    </form>
+    <div className="login">
+      <form
+        className="login__card"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onLogin(email, password);
+        }}
+      >
+        <Brand />
+        <h1 className="login__title">Admin sign in</h1>
+        <p className="login__sub">Operations, finance and platform configuration.</p>
+        {error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        )}
+        <Field label="Email" type="email" value={email} onChange={setEmail} autoFocus />
+        <Field label="Password" type="password" value={password} onChange={setPassword} />
+        <Button variant="primary" block type="submit">
+          Sign in
+        </Button>
+      </form>
+    </div>
   );
 }

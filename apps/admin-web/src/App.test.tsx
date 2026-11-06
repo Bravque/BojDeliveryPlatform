@@ -2,7 +2,13 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { App, defaultPeriod } from './App';
-import type { ApiClient, ReconciliationReport, ReportSummary } from './api';
+import type {
+  ApiClient,
+  AuditLogEntry,
+  LedgerOverview,
+  ReconciliationReport,
+  ReportSummary,
+} from './api';
 
 const summary = (over: Partial<ReportSummary> = {}): ReportSummary => ({
   periodStart: '2026-09-25',
@@ -19,11 +25,40 @@ const summary = (over: Partial<ReportSummary> = {}): ReportSummary => ({
   ...over,
 });
 
+const ledger = (over: Partial<LedgerOverview> = {}): LedgerOverview => ({
+  generatedAt: '2026-10-25T00:00:00.000Z',
+  balanced: true,
+  imbalancedTransactionCount: 0,
+  accounts: [
+    {
+      code: 'mpesa_clearing',
+      type: 'asset',
+      debitCents: 500_000,
+      creditCents: 0,
+      balanceCents: 500_000,
+    },
+  ],
+  ...over,
+});
+
 const report = (over: Partial<ReconciliationReport> = {}): ReconciliationReport => ({
   generatedAt: '2026-10-25T00:00:00.000Z',
   ledgerBalanced: true,
   imbalancedTransactionCount: 0,
   items: [],
+  ...over,
+});
+
+const auditEntry = (over: Partial<AuditLogEntry> = {}): AuditLogEntry => ({
+  id: 1,
+  actorUserId: 99,
+  actorRole: 'admin',
+  action: 'merchant.approve',
+  entityType: 'merchant',
+  entityId: 7,
+  before: null,
+  after: null,
+  createdAt: '2026-10-25T09:00:00.000Z',
   ...over,
 });
 
@@ -43,17 +78,25 @@ function makeApi() {
   const api: ApiClient = {
     login: vi.fn(() => Promise.resolve({ access: 'tok' })),
     getReportSummary: vi.fn(() => Promise.resolve(summary())),
+    getLedger: vi.fn(() => Promise.resolve(ledger())),
     getReconciliationReport: vi.fn(() => Promise.resolve(rpt)),
     runReconcile: vi.fn(() => {
       rpt = report({ items: [] }); // the sweep captured the stale payment
       return Promise.resolve({ scanned: 1, captured: 1, failed: 0, stillPending: 0, other: 0 });
     }),
+    listAuditLogs: vi.fn(() => Promise.resolve([auditEntry()])),
   };
   return { api };
 }
 
+async function login(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.type(screen.getByLabelText('Email'), 'admin@boj.local');
+  await user.type(screen.getByLabelText('Password'), 'DevAdmin!2026');
+  await user.click(screen.getByRole('button', { name: 'Sign in' }));
+}
+
 describe('admin dashboard — critical journey', () => {
-  it('login → overview (summary + divergence) → run reconcile → divergence clears', async () => {
+  it('login → overview (summary + ledger + divergence) → reconcile clears divergence → nav to audit', async () => {
     const user = userEvent.setup();
     const { api } = makeApi();
 
@@ -61,14 +104,12 @@ describe('admin dashboard — critical journey', () => {
       <App api={api} initialPeriod={{ periodStart: '2026-09-25', periodEnd: '2026-10-25' }} />,
     );
 
-    // Log in.
-    await user.type(screen.getByLabelText('Email'), 'admin@boj.local');
-    await user.type(screen.getByLabelText('Password'), 'DevAdmin!2026');
-    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+    await login(user);
 
-    // Overview renders: summary numbers + the ledger-balanced line + the divergence item.
-    expect(await screen.findByRole('heading', { name: 'Admin dashboard' })).toBeInTheDocument();
-    expect(screen.getByText('KES 12500.00')).toBeInTheDocument(); // GMV
+    // Overview renders: topbar title + GMV + ledger account + the ledger-balanced line + divergence.
+    expect(await screen.findByRole('heading', { name: 'Overview', level: 1 })).toBeInTheDocument();
+    expect(screen.getByText('KES 12,500.00')).toBeInTheDocument(); // GMV
+    expect(screen.getByTestId('account-mpesa_clearing')).toBeInTheDocument();
     expect(screen.getByTestId('ledger-balanced')).toHaveTextContent('Ledger balanced');
     expect(screen.getByTestId('divergence-P1')).toBeInTheDocument();
 
@@ -78,6 +119,11 @@ describe('admin dashboard — critical journey', () => {
     await waitFor(() => expect(screen.queryByTestId('divergence-P1')).not.toBeInTheDocument());
     expect(screen.getByText('No divergence.')).toBeInTheDocument();
     expect(api.runReconcile).toHaveBeenCalledTimes(1);
+
+    // Navigate to the audit log → the recent entry is listed.
+    await user.click(screen.getByRole('button', { name: /Audit/ }));
+    expect(await screen.findByTestId('audit-1')).toHaveTextContent('merchant.approve');
+    expect(api.listAuditLogs).toHaveBeenCalledWith('tok');
   });
 
   it('shows an error on failed login and stays on the form', async () => {
@@ -86,12 +132,21 @@ describe('admin dashboard — critical journey', () => {
     (api.login as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('bad creds'));
 
     render(<App api={api} />);
-    await user.type(screen.getByLabelText('Email'), 'admin@boj.local');
-    await user.type(screen.getByLabelText('Password'), 'wrong');
-    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+    await login(user);
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Login failed');
     await waitFor(() => expect(api.getReportSummary).not.toHaveBeenCalled());
+  });
+
+  it('unbuilt sections show a placeholder', async () => {
+    const user = userEvent.setup();
+    const { api } = makeApi();
+    render(<App api={api} />);
+    await login(user);
+    await screen.findByRole('heading', { name: 'Overview', level: 1 });
+
+    await user.click(screen.getByRole('button', { name: /Merchants/ }));
+    expect(screen.getByText(/coming in a later increment/i)).toBeInTheDocument();
   });
 
   it('defaultPeriod returns a 30-day window ending today', () => {
