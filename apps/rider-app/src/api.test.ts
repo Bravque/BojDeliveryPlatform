@@ -94,6 +94,38 @@ describe('rider api client', () => {
     expect(init!.headers).toMatchObject({ Authorization: 'Bearer tok' });
   });
 
+  it('getEarnings fetches the rider earnings with the bearer token', async () => {
+    const fetchMock = mockFetch(200, { deliveries: 3, totalEarnedCents: 21_000 });
+    vi.stubGlobal('fetch', fetchMock);
+    const api = createHttpApiClient('http://api');
+
+    const earnings = await api.getEarnings('tok');
+
+    expect(earnings).toEqual({ deliveries: 3, totalEarnedCents: 21_000 });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('http://api/api/v1/rider/earnings');
+    expect(init!.headers).toMatchObject({ Authorization: 'Bearer tok' });
+  });
+
+  it('setPayoutDestination posts the phone and returns the updated profile', async () => {
+    const fetchMock = mockFetch(200, {
+      status: 'approved',
+      vehicleType: 'motorbike',
+      isOnline: true,
+      payoutPhoneE164: '+254712345678',
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const api = createHttpApiClient('http://api');
+
+    const me = await api.setPayoutDestination('tok', '0712345678');
+
+    expect(me.payoutPhoneE164).toBe('+254712345678');
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('http://api/api/v1/rider/payout-destination');
+    expect(init!.headers).toMatchObject({ Authorization: 'Bearer tok' });
+    expect(JSON.parse(init!.body as string)).toEqual({ phone: '0712345678' });
+  });
+
   it('throws on a non-2xx (e.g. 409 offer already taken)', async () => {
     vi.stubGlobal('fetch', mockFetch(409, {}));
     const api = createHttpApiClient('http://api');

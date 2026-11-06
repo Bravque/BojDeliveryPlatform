@@ -4,7 +4,8 @@
  * transitions and API orchestration live here (business logic out of UI), so the whole journey is
  * unit-tested in CI without a React Native runtime. `App.tsx` is a thin view over `getState()`.
  */
-import type { ApiClient, DeliveryView, RiderOfferView, RiderProfile } from './api';
+import type { ApiClient, DeliveryView, RiderEarnings, RiderOfferView, RiderProfile } from './api';
+import { webTokenStore, type TokenStore } from './storage';
 
 /** The three bottom-nav tabs. */
 export type Tab = 'offers' | 'delivery' | 'account';
@@ -25,6 +26,7 @@ export interface RiderState {
   offers: RiderOfferView[];
   delivery: DeliveryView | null;
   me: RiderProfile | null;
+  earnings: RiderEarnings | null;
   error: string | null;
   busy: boolean;
 }
@@ -38,6 +40,7 @@ export function initialState(): RiderState {
     offers: [],
     delivery: null,
     me: null,
+    earnings: null,
     error: null,
     busy: false,
   };
@@ -57,17 +60,26 @@ export interface RiderModel {
   pickup(): Promise<void>;
   startDelivery(): Promise<void>;
   complete(pin: string): Promise<void>;
-  /** Switch bottom-nav tab (loads the profile on the Account tab). */
+  /** Switch bottom-nav tab (loads the profile + earnings on the Account tab). */
   goToTab(tab: Tab): void;
   /** Re-fetch the rider profile (Account tab). */
   loadProfile(): Promise<void>;
+  /** Re-fetch lifetime earnings (Account tab). */
+  loadEarnings(): Promise<void>;
+  /** Set the rider's M-Pesa withdrawal number; updates the profile on success. */
+  setPayoutDestination(phone: string): Promise<void>;
   /** Clear the session and return to sign-in. */
   signOut(): void;
   backToOffers(): void;
 }
 
-export function createRiderModel(api: ApiClient): RiderModel {
-  let state = initialState();
+export function createRiderModel(api: ApiClient, store: TokenStore = webTokenStore): RiderModel {
+  // Restore a persisted session on startup: a stored token lands the rider straight on the Shift tab
+  // (token validity is checked lazily — a stale token just errors on the next action).
+  const persisted = store.load();
+  let state: RiderState = persisted
+    ? { ...initialState(), token: persisted, screen: 'offers' }
+    : initialState();
   const listeners = new Set<(s: RiderState) => void>();
 
   function set(patch: Partial<RiderState>): void {
@@ -104,6 +116,17 @@ export function createRiderModel(api: ApiClient): RiderModel {
     await run(async () => ({ me: await api.getMe(token) }), 'Could not load your profile');
   }
 
+  async function loadEarnings(): Promise<void> {
+    const token = state.token;
+    if (!token) {
+      return;
+    }
+    await run(
+      async () => ({ earnings: await api.getEarnings(token) }),
+      'Could not load your earnings',
+    );
+  }
+
   return {
     getState: () => state,
     subscribe(listener) {
@@ -121,6 +144,7 @@ export function createRiderModel(api: ApiClient): RiderModel {
     async verifyOtp(code) {
       await run(async () => {
         const { access } = await api.verifyOtp(state.phone, code);
+        store.save(access);
         return { token: access, screen: 'offers' };
       }, 'Invalid code');
     },
@@ -229,12 +253,26 @@ export function createRiderModel(api: ApiClient): RiderModel {
       set({ screen: tab, error: null });
       if (tab === 'account') {
         void loadProfile();
+        void loadEarnings();
       }
     },
 
     loadProfile,
+    loadEarnings,
+
+    async setPayoutDestination(phone) {
+      const token = requireToken();
+      if (!token) {
+        return;
+      }
+      await run(
+        async () => ({ me: await api.setPayoutDestination(token, phone) }),
+        'Could not save your payout number',
+      );
+    },
 
     signOut() {
+      store.clear();
       set(initialState());
     },
 

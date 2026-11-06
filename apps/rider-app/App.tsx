@@ -480,6 +480,8 @@ function DeliveryScreen({
 
 function AccountScreen({ model, state }: { model: RiderModel; state: RiderState }): JSX.Element {
   const me = state.me;
+  const earnings = state.earnings;
+  const [payout, setPayout] = useState('');
   return (
     <ScrollView contentContainerStyle={{ padding: 18 }}>
       <Title>Account</Title>
@@ -502,10 +504,29 @@ function AccountScreen({ model, state }: { model: RiderModel; state: RiderState 
             <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>
               Signed in as
             </Text>
-            <Text style={{ color: colors.muted, marginTop: 2 }}>{state.phone}</Text>
+            <Text style={{ color: colors.muted, marginTop: 2 }}>{state.phone || 'your phone'}</Text>
           </View>
         </View>
       </Card>
+
+      <SectionTitle>Earnings</SectionTitle>
+      <Card>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <View>
+            <Text style={{ fontSize: 24, fontWeight: '800', color: colors.primaryDark }}>
+              {money(earnings?.totalEarnedCents ?? 0)}
+            </Text>
+            <Text style={{ color: colors.muted, marginTop: 2 }}>Total earned</Text>
+          </View>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={{ fontSize: 24, fontWeight: '800', color: colors.text }}>
+              {earnings?.deliveries ?? 0}
+            </Text>
+            <Text style={{ color: colors.muted, marginTop: 2 }}>Deliveries</Text>
+          </View>
+        </View>
+      </Card>
+
       {me ? (
         <Card>
           <AccountRow label="Status" value={me.status} />
@@ -513,6 +534,32 @@ function AccountScreen({ model, state }: { model: RiderModel; state: RiderState 
           <AccountRow label="Online" value={state.online ? 'Yes' : 'No'} />
         </Card>
       ) : null}
+
+      <SectionTitle>Payout number</SectionTitle>
+      <Card>
+        <Text style={{ color: colors.muted, marginBottom: 10 }}>
+          Earnings are withdrawn to{' '}
+          <Text style={{ fontWeight: '800', color: colors.text }}>
+            {me?.payoutPhoneE164 ?? 'your sign-in number'}
+          </Text>
+          .
+        </Text>
+        <Field
+          label="New M-Pesa number"
+          value={payout}
+          onChangeText={setPayout}
+          placeholder="+2547…"
+          keyboardType="phone-pad"
+        />
+        <PrimaryButton
+          title="Save payout number"
+          onPress={() => {
+            void model.setPayoutDestination(payout.trim());
+            setPayout('');
+          }}
+        />
+      </Card>
+
       {state.error ? <Alert message={state.error} /> : null}
       <SecondaryButton title="Sign out" onPress={() => model.signOut()} />
       <Text style={{ color: colors.muted, textAlign: 'center', marginTop: 16, fontSize: 12 }}>
