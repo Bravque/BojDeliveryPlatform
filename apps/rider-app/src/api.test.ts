@@ -77,6 +77,23 @@ describe('rider api client', () => {
     expect(init!.headers).toMatchObject({ Authorization: 'Bearer tok' });
   });
 
+  it('getMe fetches the rider profile with the bearer token', async () => {
+    const fetchMock = mockFetch(200, {
+      status: 'approved',
+      vehicleType: 'motorbike',
+      isOnline: true,
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const api = createHttpApiClient('http://api');
+
+    const me = await api.getMe('tok');
+
+    expect(me.vehicleType).toBe('motorbike');
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('http://api/api/v1/rider/me');
+    expect(init!.headers).toMatchObject({ Authorization: 'Bearer tok' });
+  });
+
   it('throws on a non-2xx (e.g. 409 offer already taken)', async () => {
     vi.stubGlobal('fetch', mockFetch(409, {}));
     const api = createHttpApiClient('http://api');
