@@ -17,6 +17,13 @@ export function formatPct(rate: number): string {
   return `${(rate * 100).toFixed(2)}%`;
 }
 
+/** The last 30 days, ending today, as a `{ periodStart, periodEnd }` of YYYY-MM-DD strings. */
+export function last30Days(now: Date = new Date()): { periodStart: string; periodEnd: string } {
+  const periodEnd = now.toISOString().slice(0, 10);
+  const periodStart = new Date(now.getTime() - 30 * 86_400_000).toISOString().slice(0, 10);
+  return { periodStart, periodEnd };
+}
+
 /** Human label for a snake_case code (status, classification…) → Title Case. */
 export function titleCase(code: string): string {
   return code

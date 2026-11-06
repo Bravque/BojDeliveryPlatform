@@ -2,7 +2,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { OverviewView } from './overview';
-import type { ApiClient, LedgerOverview, ReconciliationReport, ReportSummary } from './api';
+import { fakeApi } from './testApi';
+import type { LedgerOverview, ReconciliationReport, ReportSummary } from './api';
 
 const PERIOD = { periodStart: '2026-09-25', periodEnd: '2026-10-25' };
 
@@ -35,15 +36,14 @@ const ledger: LedgerOverview = {
   ],
 };
 
-function makeApi(reportItems: ReconciliationReport['items'] = []): ApiClient {
+function makeApi(reportItems: ReconciliationReport['items'] = []) {
   let rpt: ReconciliationReport = {
     generatedAt: '2026-10-25T00:00:00.000Z',
     ledgerBalanced: true,
     imbalancedTransactionCount: 0,
     items: reportItems,
   };
-  return {
-    login: vi.fn(),
+  return fakeApi({
     getReportSummary: vi.fn(() => Promise.resolve(summary)),
     getLedger: vi.fn(() => Promise.resolve(ledger)),
     getReconciliationReport: vi.fn(() => Promise.resolve(rpt)),
@@ -51,8 +51,7 @@ function makeApi(reportItems: ReconciliationReport['items'] = []): ApiClient {
       rpt = { ...rpt, items: [] };
       return Promise.resolve({ scanned: 2, captured: 1, failed: 0, stillPending: 1, other: 0 });
     }),
-    listAuditLogs: vi.fn(),
-  };
+  });
 }
 
 describe('OverviewView', () => {

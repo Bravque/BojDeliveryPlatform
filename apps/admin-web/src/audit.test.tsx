@@ -2,7 +2,8 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { AuditView } from './audit';
-import type { ApiClient, AuditLogEntry } from './api';
+import { fakeApi } from './testApi';
+import type { AuditLogEntry } from './api';
 
 const entry = (over: Partial<AuditLogEntry> = {}): AuditLogEntry => ({
   id: 1,
@@ -17,15 +18,8 @@ const entry = (over: Partial<AuditLogEntry> = {}): AuditLogEntry => ({
   ...over,
 });
 
-function makeApi(entries: AuditLogEntry[]): ApiClient {
-  return {
-    login: vi.fn(),
-    getReportSummary: vi.fn(),
-    getLedger: vi.fn(),
-    getReconciliationReport: vi.fn(),
-    runReconcile: vi.fn(),
-    listAuditLogs: vi.fn(() => Promise.resolve(entries)),
-  };
+function makeApi(entries: AuditLogEntry[]) {
+  return fakeApi({ listAuditLogs: vi.fn(() => Promise.resolve(entries)) });
 }
 
 describe('AuditView', () => {

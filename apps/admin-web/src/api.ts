@@ -80,6 +80,188 @@ export interface AuditLogEntry {
   createdAt: string;
 }
 
+/** `MerchantSummary` returned by the admin merchant mutations. */
+export interface MerchantSummary {
+  ulid: string;
+  name: string;
+  categoryType: string;
+  status: string;
+  isOpen: boolean;
+  prepMinutes: number;
+  commissionBps: number;
+  payoutPhoneE164: string | null;
+}
+
+/** `GET /api/v1/admin/merchants` item — summary enriched with town + creation time. */
+export interface AdminMerchant extends MerchantSummary {
+  townName: string;
+  createdAt: string;
+}
+
+export interface CreateMerchantInput {
+  townName: string;
+  name: string;
+  categoryType: string;
+  commissionBps: number;
+  prepMinutes?: number;
+  ownerUserUlid?: string;
+}
+
+/** `RiderSummary` returned by the admin rider mutations. */
+export interface RiderSummary {
+  userUlid: string;
+  status: string;
+  vehicleType: string;
+  isOnline: boolean;
+  payoutPhoneE164: string | null;
+}
+
+/** `GET /api/v1/admin/riders` item — summary enriched with sign-in phone + application time. */
+export interface AdminRider extends RiderSummary {
+  phoneE164: string | null;
+  createdAt: string;
+}
+
+/** `GET /api/v1/admin/settlements` item — mirrors `SettlementView`. */
+export interface SettlementView {
+  ulid: string;
+  merchantUlid: string;
+  periodStart: string;
+  periodEnd: string;
+  grossCents: number;
+  commissionCents: number;
+  refundsCents: number;
+  netCents: number;
+  status: string;
+}
+
+export interface GenerateSettlementsResult {
+  generated: number;
+  skipped: number;
+  settlements: SettlementView[];
+}
+
+/** `GET /api/v1/admin/payouts` item — mirrors `PayoutView`. */
+export interface PayoutView {
+  ulid: string;
+  payeeType: string;
+  amountCents: number;
+  status: string;
+  financeApproved: boolean;
+  opsApproved: boolean;
+  externalRef: string | null;
+}
+
+export interface GeneratePayoutsResult {
+  generated: number;
+  skipped: number;
+  payouts: PayoutView[];
+}
+
+/** `GET /api/v1/admin/refunds` item — mirrors `RefundListItem`. */
+export interface RefundListItem {
+  ulid: string;
+  orderUlid: string | null;
+  orderNumber: string | null;
+  status: string;
+  source: string;
+  amountCents: number;
+  reason: string;
+  providerRef: string | null;
+  createdAt: string;
+}
+
+/** `POST /api/v1/refunds/:ulid/{approve,reject}` — mirrors `RefundView`. */
+export interface RefundView {
+  ulid: string;
+  orderUlid: string | null;
+  status: string;
+  source: string;
+  amountCents: number;
+  reason: string;
+  providerRef: string | null;
+}
+
+/** `GET /api/v1/admin/zones` item — mirrors `ZoneWithTownSummary`. */
+export interface AdminZone {
+  ulid: string;
+  name: string;
+  centerLat: number | null;
+  centerLng: number | null;
+  radiusM: number | null;
+  isActive: boolean;
+  townUlid: string;
+  townName: string;
+}
+
+export interface CreateZoneInput {
+  townName: string;
+  name: string;
+  centerLat: number;
+  centerLng: number;
+  radiusM: number;
+  isActive?: boolean;
+}
+
+export interface UpdateZoneInput {
+  name?: string;
+  centerLat?: number;
+  centerLng?: number;
+  radiusM?: number;
+  isActive?: boolean;
+}
+
+/** `GET /api/v1/admin/zones/:zoneUlid/fee-rules` item — mirrors `FeeRuleSummary`. */
+export interface FeeRule {
+  ulid: string;
+  baseFeeCents: number;
+  perKmCents: number;
+  minFeeCents: number;
+  maxFeeCents: number | null;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
+export interface CreateFeeRuleInput {
+  baseFeeCents: number;
+  perKmCents: number;
+  minFeeCents: number;
+  maxFeeCents?: number | null;
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+}
+
+/** `GET /api/v1/admin/promotions` item — mirrors `PromotionSummary`. */
+export interface Promotion {
+  ulid: string;
+  code: string;
+  type: 'percentage' | 'fixed' | 'free_delivery';
+  valueBps: number | null;
+  valueCents: number | null;
+  maxDiscountCents: number | null;
+  minSubtotalCents: number;
+  perUserLimit: number;
+  totalLimit: number | null;
+  totalRedeemed: number;
+  startsAt: string;
+  endsAt: string;
+  isActive: boolean;
+}
+
+export interface CreatePromotionInput {
+  code: string;
+  type: 'percentage' | 'fixed' | 'free_delivery';
+  valueBps?: number | null;
+  valueCents?: number | null;
+  maxDiscountCents?: number | null;
+  minSubtotalCents?: number;
+  perUserLimit?: number;
+  totalLimit?: number | null;
+  startsAt: string;
+  endsAt: string;
+  isActive?: boolean;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -98,6 +280,56 @@ export interface ApiClient {
   getReconciliationReport(token: string): Promise<ReconciliationReport>;
   runReconcile(token: string): Promise<ReconcileSummary>;
   listAuditLogs(token: string): Promise<AuditLogEntry[]>;
+
+  // --- operations: merchants ---
+  listMerchants(token: string): Promise<AdminMerchant[]>;
+  createMerchant(token: string, input: CreateMerchantInput): Promise<MerchantSummary>;
+  approveMerchant(token: string, ulid: string): Promise<MerchantSummary>;
+  suspendMerchant(token: string, ulid: string, reason: string): Promise<MerchantSummary>;
+  setMerchantPayoutDestination(
+    token: string,
+    ulid: string,
+    phone: string,
+  ): Promise<MerchantSummary>;
+  addMerchantOwner(
+    token: string,
+    ulid: string,
+    userUlid: string,
+    role: 'owner' | 'staff',
+  ): Promise<MerchantSummary>;
+
+  // --- operations: riders ---
+  listRiders(token: string): Promise<AdminRider[]>;
+  approveRider(token: string, ulid: string): Promise<RiderSummary>;
+  suspendRider(token: string, ulid: string, reason: string): Promise<RiderSummary>;
+
+  // --- finance: settlements ---
+  listSettlements(token: string): Promise<SettlementView[]>;
+  generateSettlements(token: string, period: Period): Promise<GenerateSettlementsResult>;
+  approveSettlement(token: string, ulid: string): Promise<SettlementView>;
+
+  // --- finance: payouts ---
+  listPayouts(token: string): Promise<PayoutView[]>;
+  generatePayouts(token: string, period: Period): Promise<GeneratePayoutsResult>;
+  approvePayoutFinance(token: string, ulid: string): Promise<PayoutView>;
+  approvePayoutOps(token: string, ulid: string): Promise<PayoutView>;
+  executePayout(token: string, ulid: string): Promise<PayoutView>;
+
+  // --- finance: refunds ---
+  listRefunds(token: string): Promise<RefundListItem[]>;
+  approveRefund(token: string, ulid: string): Promise<RefundView>;
+  rejectRefund(token: string, ulid: string): Promise<RefundView>;
+
+  // --- config: zones + fee rules ---
+  listZones(token: string): Promise<AdminZone[]>;
+  createZone(token: string, input: CreateZoneInput): Promise<AdminZone>;
+  updateZone(token: string, ulid: string, patch: UpdateZoneInput): Promise<AdminZone>;
+  listFeeRules(token: string, zoneUlid: string): Promise<FeeRule[]>;
+  createFeeRule(token: string, zoneUlid: string, input: CreateFeeRuleInput): Promise<FeeRule>;
+
+  // --- config: promotions ---
+  listPromotions(token: string): Promise<Promotion[]>;
+  createPromotion(token: string, input: CreatePromotionInput): Promise<Promotion>;
 }
 
 export function createHttpApiClient(baseUrl: string): ApiClient {
@@ -158,6 +390,143 @@ export function createHttpApiClient(baseUrl: string): ApiClient {
         token,
       });
       return res.items;
+    },
+
+    async listMerchants(token) {
+      const res = await request<{ items: AdminMerchant[] }>('GET', '/api/v1/admin/merchants', {
+        token,
+      });
+      return res.items;
+    },
+    createMerchant(token, input) {
+      return request<MerchantSummary>('POST', '/api/v1/admin/merchants', { token, body: input });
+    },
+    approveMerchant(token, ulid) {
+      return request<MerchantSummary>('POST', `/api/v1/admin/merchants/${ulid}/approve`, { token });
+    },
+    suspendMerchant(token, ulid, reason) {
+      return request<MerchantSummary>('POST', `/api/v1/admin/merchants/${ulid}/suspend`, {
+        token,
+        body: { reason },
+      });
+    },
+    setMerchantPayoutDestination(token, ulid, phone) {
+      return request<MerchantSummary>(
+        'POST',
+        `/api/v1/admin/merchants/${ulid}/payout-destination`,
+        {
+          token,
+          body: { phone },
+        },
+      );
+    },
+    addMerchantOwner(token, ulid, userUlid, role) {
+      return request<MerchantSummary>('POST', `/api/v1/admin/merchants/${ulid}/owners`, {
+        token,
+        body: { userUlid, role },
+      });
+    },
+
+    async listRiders(token) {
+      const res = await request<{ items: AdminRider[] }>('GET', '/api/v1/admin/riders', { token });
+      return res.items;
+    },
+    approveRider(token, ulid) {
+      return request<RiderSummary>('POST', `/api/v1/admin/riders/${ulid}/approve`, { token });
+    },
+    suspendRider(token, ulid, reason) {
+      return request<RiderSummary>('POST', `/api/v1/admin/riders/${ulid}/suspend`, {
+        token,
+        body: { reason },
+      });
+    },
+
+    async listSettlements(token) {
+      const res = await request<{ items: SettlementView[] }>('GET', '/api/v1/admin/settlements', {
+        token,
+      });
+      return res.items;
+    },
+    generateSettlements(token, period) {
+      return request<GenerateSettlementsResult>('POST', '/api/v1/admin/settlements/generate', {
+        token,
+        body: period,
+      });
+    },
+    approveSettlement(token, ulid) {
+      return request<SettlementView>('POST', `/api/v1/admin/settlements/${ulid}/approve`, {
+        token,
+      });
+    },
+
+    async listPayouts(token) {
+      const res = await request<{ items: PayoutView[] }>('GET', '/api/v1/admin/payouts', { token });
+      return res.items;
+    },
+    generatePayouts(token, period) {
+      return request<GeneratePayoutsResult>('POST', '/api/v1/admin/payouts/generate', {
+        token,
+        body: period,
+      });
+    },
+    approvePayoutFinance(token, ulid) {
+      return request<PayoutView>('POST', `/api/v1/admin/payouts/${ulid}/approve-finance`, {
+        token,
+      });
+    },
+    approvePayoutOps(token, ulid) {
+      return request<PayoutView>('POST', `/api/v1/admin/payouts/${ulid}/approve-ops`, { token });
+    },
+    executePayout(token, ulid) {
+      return request<PayoutView>('POST', `/api/v1/admin/payouts/${ulid}/execute`, { token });
+    },
+
+    async listRefunds(token) {
+      const res = await request<{ items: RefundListItem[] }>('GET', '/api/v1/admin/refunds', {
+        token,
+      });
+      return res.items;
+    },
+    approveRefund(token, ulid) {
+      return request<RefundView>('POST', `/api/v1/refunds/${ulid}/approve`, { token });
+    },
+    rejectRefund(token, ulid) {
+      return request<RefundView>('POST', `/api/v1/refunds/${ulid}/reject`, { token });
+    },
+
+    async listZones(token) {
+      const res = await request<{ items: AdminZone[] }>('GET', '/api/v1/admin/zones', { token });
+      return res.items;
+    },
+    createZone(token, input) {
+      return request<AdminZone>('POST', '/api/v1/admin/zones', { token, body: input });
+    },
+    updateZone(token, ulid, patch) {
+      return request<AdminZone>('PATCH', `/api/v1/admin/zones/${ulid}`, { token, body: patch });
+    },
+    async listFeeRules(token, zoneUlid) {
+      const res = await request<{ items: FeeRule[] }>(
+        'GET',
+        `/api/v1/admin/zones/${zoneUlid}/fee-rules`,
+        { token },
+      );
+      return res.items;
+    },
+    createFeeRule(token, zoneUlid, input) {
+      return request<FeeRule>('POST', `/api/v1/admin/zones/${zoneUlid}/fee-rules`, {
+        token,
+        body: input,
+      });
+    },
+
+    async listPromotions(token) {
+      const res = await request<{ items: Promotion[] }>('GET', '/api/v1/admin/promotions', {
+        token,
+      });
+      return res.items;
+    },
+    createPromotion(token, input) {
+      return request<Promotion>('POST', '/api/v1/admin/promotions', { token, body: input });
     },
   };
 }

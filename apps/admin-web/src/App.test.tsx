@@ -2,13 +2,8 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { App, defaultPeriod } from './App';
-import type {
-  ApiClient,
-  AuditLogEntry,
-  LedgerOverview,
-  ReconciliationReport,
-  ReportSummary,
-} from './api';
+import { fakeApi } from './testApi';
+import type { AuditLogEntry, LedgerOverview, ReconciliationReport, ReportSummary } from './api';
 
 const summary = (over: Partial<ReportSummary> = {}): ReportSummary => ({
   periodStart: '2026-09-25',
@@ -75,7 +70,7 @@ function makeApi() {
       },
     ],
   });
-  const api: ApiClient = {
+  const api = fakeApi({
     login: vi.fn(() => Promise.resolve({ access: 'tok' })),
     getReportSummary: vi.fn(() => Promise.resolve(summary())),
     getLedger: vi.fn(() => Promise.resolve(ledger())),
@@ -85,7 +80,7 @@ function makeApi() {
       return Promise.resolve({ scanned: 1, captured: 1, failed: 0, stillPending: 0, other: 0 });
     }),
     listAuditLogs: vi.fn(() => Promise.resolve([auditEntry()])),
-  };
+  });
   return { api };
 }
 
@@ -138,15 +133,15 @@ describe('admin dashboard — critical journey', () => {
     await waitFor(() => expect(api.getReportSummary).not.toHaveBeenCalled());
   });
 
-  it('unbuilt sections show a placeholder', async () => {
+  it('navigates between sections via the sidebar', async () => {
     const user = userEvent.setup();
     const { api } = makeApi();
     render(<App api={api} />);
     await login(user);
     await screen.findByRole('heading', { name: 'Overview', level: 1 });
 
-    await user.click(screen.getByRole('button', { name: /Merchants/ }));
-    expect(screen.getByText(/coming in a later increment/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Config/ }));
+    expect(await screen.findByRole('heading', { name: 'Configuration' })).toBeInTheDocument();
   });
 
   it('defaultPeriod returns a 30-day window ending today', () => {
