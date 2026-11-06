@@ -126,9 +126,51 @@ describe('rider api client', () => {
     expect(JSON.parse(init!.body as string)).toEqual({ phone: '0712345678' });
   });
 
-  it('throws on a non-2xx (e.g. 409 offer already taken)', async () => {
+  it('apply posts the vehicle type and returns the new (pending) profile', async () => {
+    const fetchMock = mockFetch(201, {
+      status: 'pending',
+      vehicleType: 'bicycle',
+      isOnline: false,
+      payoutPhoneE164: null,
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const api = createHttpApiClient('http://api');
+
+    const me = await api.apply('tok', 'bicycle');
+
+    expect(me.status).toBe('pending');
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('http://api/api/v1/rider/apply');
+    expect(JSON.parse(init!.body as string)).toEqual({ vehicleType: 'bicycle' });
+  });
+
+  it('ping posts coordinates with the bearer token', async () => {
+    const fetchMock = mockFetch(200, {});
+    vi.stubGlobal('fetch', fetchMock);
+    const api = createHttpApiClient('http://api');
+
+    await api.ping('tok', -1.0634, 34.4731);
+
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('http://api/api/v1/rider/ping');
+    expect(JSON.parse(init!.body as string)).toEqual({ lat: -1.0634, lng: 34.4731 });
+  });
+
+  it('declineOffer posts to the decline path', async () => {
+    const fetchMock = mockFetch(200, {});
+    vi.stubGlobal('fetch', fetchMock);
+    const api = createHttpApiClient('http://api');
+
+    await api.declineOffer('tok', 7);
+
+    const [url] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('http://api/api/v1/rider/offers/7/decline');
+  });
+
+  it('throws an ApiError carrying the status on a non-2xx', async () => {
     vi.stubGlobal('fetch', mockFetch(409, {}));
     const api = createHttpApiClient('http://api');
+    await expect(api.acceptOffer('tok', 7)).rejects.toMatchObject({ status: 409 });
     await expect(api.acceptOffer('tok', 7)).rejects.toThrow('Request failed: 409');
   });
 });
