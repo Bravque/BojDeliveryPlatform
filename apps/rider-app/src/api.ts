@@ -8,6 +8,16 @@ export interface AuthResult {
   access: string;
 }
 
+export type VehicleType = 'motorbike' | 'bicycle' | 'car' | 'foot';
+
+/** Error carrying the HTTP status, so callers can branch (e.g. 404 = not a rider yet → apply). */
+export class ApiError extends Error {
+  constructor(public readonly status: number) {
+    super(`Request failed: ${status}`);
+    this.name = 'ApiError';
+  }
+}
+
 /** Mirrors `RiderOfferView` (`GET /rider/offers`). */
 export interface RiderOfferView {
   offerId: number;
@@ -60,13 +70,16 @@ export interface ApiClient {
   getMe(token: string): Promise<RiderProfile>;
   getEarnings(token: string): Promise<RiderEarnings>;
   setPayoutDestination(token: string, phone: string): Promise<RiderProfile>;
+  apply(token: string, vehicleType: VehicleType): Promise<RiderProfile>;
+  ping(token: string, lat: number, lng: number): Promise<void>;
+  declineOffer(token: string, offerId: number): Promise<void>;
 }
 
 export function createHttpApiClient(baseUrl: string): ApiClient {
   async function json<T>(path: string, init?: RequestInit): Promise<T> {
     const res = await fetch(`${baseUrl}${path}`, init);
     if (!res.ok) {
-      throw new Error(`Request failed: ${res.status}`);
+      throw new ApiError(res.status);
     }
     return (await res.json()) as T;
   }
@@ -132,6 +145,15 @@ export function createHttpApiClient(baseUrl: string): ApiClient {
     },
     async setPayoutDestination(token, phone) {
       return json<RiderProfile>('/api/v1/rider/payout-destination', post(token, { phone }));
+    },
+    async apply(token, vehicleType) {
+      return json<RiderProfile>('/api/v1/rider/apply', post(token, { vehicleType }));
+    },
+    async ping(token, lat, lng) {
+      await json('/api/v1/rider/ping', post(token, { lat, lng }));
+    },
+    async declineOffer(token, offerId) {
+      await json(`/api/v1/rider/offers/${offerId}/decline`, post(token));
     },
   };
 }

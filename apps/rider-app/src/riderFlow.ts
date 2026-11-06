@@ -4,13 +4,22 @@
  * transitions and API orchestration live here (business logic out of UI), so the whole journey is
  * unit-tested in CI without a React Native runtime. `App.tsx` is a thin view over `getState()`.
  */
-import type { ApiClient, DeliveryView, RiderEarnings, RiderOfferView, RiderProfile } from './api';
+import {
+  ApiError,
+  type ApiClient,
+  type DeliveryView,
+  type RiderEarnings,
+  type RiderOfferView,
+  type RiderProfile,
+  type VehicleType,
+} from './api';
 import { webTokenStore, type TokenStore } from './storage';
 
 /** The three bottom-nav tabs. */
 export type Tab = 'offers' | 'delivery' | 'account';
 
-export type Screen = 'phone' | 'otp' | Tab;
+/** `apply`/`pending` are the onboarding screens shown before a rider is approved (no tab bar). */
+export type Screen = 'phone' | 'otp' | 'apply' | 'pending' | Tab;
 
 /** Whether a screen is a bottom-nav tab (so the tab bar shows there). */
 export const TABS: Tab[] = ['offers', 'delivery', 'account'];
@@ -57,6 +66,14 @@ export interface RiderModel {
   /** Silent re-fetch on a realtime `offer.new` push (no busy/error toggling — notifications only). */
   onOfferPush(): Promise<void>;
   acceptOffer(offerId: number): Promise<void>;
+  /** Decline an offer → it drops off the live list. */
+  declineOffer(offerId: number): Promise<void>;
+  /** Submit a rider application (for a signed-in user who isn't a rider yet) → pending. */
+  apply(vehicleType: VehicleType): Promise<void>;
+  /** Best-effort presence ping while online (keeps the rider a fresh offer candidate). */
+  ping(lat: number, lng: number): Promise<void>;
+  /** Re-check the rider profile/status (pending screen) — advances to Shift once approved. */
+  refreshStatus(): Promise<void>;
   pickup(): Promise<void>;
   startDelivery(): Promise<void>;
   complete(pin: string): Promise<void>;
@@ -127,6 +144,28 @@ export function createRiderModel(api: ApiClient, store: TokenStore = webTokenSto
     );
   }
 
+  /**
+   * Route to the right screen after sign-in / on restore by looking up the rider profile:
+   * approved → Shift (offers); pending/suspended → the status screen; no profile (404) → apply.
+   */
+  async function resolveSession(token: string): Promise<void> {
+    try {
+      const me = await api.getMe(token);
+      set({ me, screen: me.status === 'approved' ? 'offers' : 'pending', busy: false });
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) {
+        set({ me: null, screen: 'apply', busy: false });
+      } else {
+        set({ busy: false, error: 'Could not load your rider profile' });
+      }
+    }
+  }
+
+  // Restored session: confirm the rider's current status (may correct the optimistic Shift screen).
+  if (persisted) {
+    void resolveSession(persisted);
+  }
+
   return {
     getState: () => state,
     subscribe(listener) {
@@ -142,11 +181,15 @@ export function createRiderModel(api: ApiClient, store: TokenStore = webTokenSto
     },
 
     async verifyOtp(code) {
-      await run(async () => {
+      set({ busy: true, error: null });
+      try {
         const { access } = await api.verifyOtp(state.phone, code);
         store.save(access);
-        return { token: access, screen: 'offers' };
-      }, 'Invalid code');
+        set({ token: access });
+        await resolveSession(access); // route to offers / pending / apply by profile
+      } catch {
+        set({ busy: false, error: 'Invalid code' });
+      }
     },
 
     async goOnline() {
@@ -211,6 +254,49 @@ export function createRiderModel(api: ApiClient, store: TokenStore = webTokenSto
           // ignore a refresh failure — the next manual refresh retries
         }
       }
+    },
+
+    async declineOffer(offerId) {
+      const token = requireToken();
+      if (!token) {
+        return;
+      }
+      await run(async () => {
+        await api.declineOffer(token, offerId);
+        return { offers: await api.listOffers(token) };
+      }, 'Could not decline the offer');
+    },
+
+    async apply(vehicleType) {
+      const token = requireToken();
+      if (!token) {
+        return;
+      }
+      await run(async () => {
+        const me = await api.apply(token, vehicleType);
+        return { me, screen: 'pending' };
+      }, 'Could not submit your application');
+    },
+
+    async ping(lat, lng) {
+      const token = state.token;
+      if (!token || !state.online) {
+        return;
+      }
+      try {
+        await api.ping(token, lat, lng);
+      } catch {
+        // Best-effort presence — a failed ping is retried on the next interval.
+      }
+    },
+
+    async refreshStatus() {
+      const token = requireToken();
+      if (!token) {
+        return;
+      }
+      set({ busy: true, error: null });
+      await resolveSession(token);
     },
 
     async pickup() {
