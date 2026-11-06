@@ -563,6 +563,170 @@ body {
   margin-bottom: 14px;
 }
 
+/* ---- modal (centered dialog) -------------------------------------------------------------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 18, 30, 0.38);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 50;
+}
+.modal {
+  width: min(440px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+/* ---- switch ------------------------------------------------------------------------------- */
+.switch {
+  display: inline-flex;
+  cursor: pointer;
+}
+.switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.switch__track {
+  width: 40px;
+  height: 23px;
+  border-radius: var(--radius-pill);
+  background: var(--border);
+  padding: 2px;
+  transition: background 0.15s ease;
+}
+.switch__thumb {
+  display: block;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s ease;
+}
+.switch input:checked + .switch__track {
+  background: var(--green);
+}
+.switch input:checked + .switch__track .switch__thumb {
+  transform: translateX(17px);
+}
+
+/* ---- menu management ---------------------------------------------------------------------- */
+.menu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+.menu-head__title {
+  font-size: 20px;
+  font-weight: 800;
+  margin: 0;
+}
+.menu-head__actions {
+  display: flex;
+  gap: 10px;
+}
+.menu-cat {
+  margin-bottom: 26px;
+}
+.menu-cat__title {
+  font-size: 14px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+.product-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 13px 15px;
+  margin-bottom: 10px;
+}
+.product-row--off {
+  opacity: 0.6;
+}
+.product-row__main {
+  flex: 1;
+  min-width: 0;
+}
+.product-row__name {
+  font-weight: 800;
+  font-size: 15px;
+}
+.product-row__meta {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 3px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.product-row__side {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.inline-form {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+.inline-form .input {
+  max-width: 280px;
+}
+.og {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.og__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+.og__opt {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 0;
+  border-top: 1px dashed var(--border);
+  font-size: 14px;
+}
+.field-error {
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0 0 12px;
+}
+.stack-sm > * + * {
+  margin-top: 10px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 /* ---- responsive --------------------------------------------------------------------------- */
 @media (max-width: 720px) {
   .shell {
