@@ -136,4 +136,25 @@ describe.skipIf(!DATABASE_URL)('rider onboarding integration (real MySQL)', () =
       .set(applicantAuth());
     expect(res.status).toBe(403);
   });
+
+  it('GET /admin/riders lists the applicant with phone + status for admin', async () => {
+    await request(app)
+      .post('/api/v1/rider/apply')
+      .set(applicantAuth())
+      .send({ vehicleType: 'motorbike' });
+
+    const res = await request(app).get('/api/v1/admin/riders').set(adminAuth());
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0]).toMatchObject({
+      userUlid: applicantUlid,
+      status: 'pending',
+      vehicleType: 'motorbike',
+      phoneE164: '+254700000160',
+    });
+    expect(typeof res.body.items[0].createdAt).toBe('string');
+
+    // A customer may not read the roster.
+    expect((await request(app).get('/api/v1/admin/riders').set(applicantAuth())).status).toBe(403);
+  });
 });

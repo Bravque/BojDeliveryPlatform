@@ -38,6 +38,10 @@ const riderService: RiderService = {
   getOwnEarnings: () => Promise.resolve({ deliveries: 2, totalEarnedCents: 14_000 }),
   setPayoutDestination: () =>
     Promise.resolve({ ...summary, status: 'approved', payoutPhoneE164: '+254712345678' }),
+  listRiders: () =>
+    Promise.resolve([
+      { ...summary, phoneE164: '+254712345678', createdAt: '2026-01-01T00:00:00.000Z' },
+    ]),
 };
 
 const presence: PresenceView = {
@@ -131,6 +135,24 @@ describe('rider self-service', () => {
 });
 
 describe('rider admin onboarding (RBAC)', () => {
+  it('lists riders for ops (200), forbids a customer (403), 401 unauthenticated', async () => {
+    const ok = await request(app())
+      .get('/api/v1/admin/riders')
+      .set('Authorization', `Bearer ${tokenFor(['ops'])}`);
+    expect(ok.status).toBe(200);
+    expect(ok.body.items).toHaveLength(1);
+    expect(ok.body.items[0]).toMatchObject({ userUlid: 'U1', phoneE164: '+254712345678' });
+
+    expect(
+      (
+        await request(app())
+          .get('/api/v1/admin/riders')
+          .set('Authorization', `Bearer ${tokenFor(['customer'])}`)
+      ).status,
+    ).toBe(403);
+    expect((await request(app()).get('/api/v1/admin/riders')).status).toBe(401);
+  });
+
   it('forbids a customer approving (403), allows ops (200)', async () => {
     expect(
       (

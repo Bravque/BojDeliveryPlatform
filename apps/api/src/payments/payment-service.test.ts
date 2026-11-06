@@ -112,6 +112,9 @@ class FakePaymentsRepo implements PaymentsRepo {
   async insertRefund() {
     return 1;
   }
+  async listRefunds() {
+    return [];
+  }
   async findRefundByUlid() {
     return null;
   }

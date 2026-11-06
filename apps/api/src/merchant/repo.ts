@@ -35,11 +35,16 @@ export interface CreateMerchantInput {
   prepMinutes: number;
 }
 
+/** A merchant plus its town name, for the admin console list (avoids an N+1 town lookup). */
+export type MerchantListRow = MerchantRecord & { townName: string };
+
 export interface MerchantRepo {
   findTownIdByName(name: string): Promise<number | null>;
   findUserIdByUlid(ulid: string): Promise<number | null>;
   createMerchant(input: CreateMerchantInput): Promise<MerchantRecord>;
   findMerchantByUlid(ulid: string): Promise<MerchantRecord | null>;
+  /** All merchants with their town name, newest first (admin onboarding console). */
+  listMerchants(): Promise<MerchantListRow[]>;
   setMerchantStatus(merchantId: number, status: MerchantStatus): Promise<void>;
   /** Set (or clear, with null) the merchant's canonical-E.164 B2C payout destination. */
   setMerchantPayoutPhone(merchantId: number, phoneE164: string | null): Promise<void>;
@@ -112,6 +117,16 @@ export function createKnexMerchantRepo(db: Knex): MerchantRepo {
     async findMerchantByUlid(ulid) {
       const row = (await db('merchant').where({ ulid }).first()) as MerchantRowDb | undefined;
       return row ? mapMerchant(row) : null;
+    },
+
+    async listMerchants() {
+      const rows = (await db('merchant')
+        .join('town', 'town.id', 'merchant.town_id')
+        .orderBy('merchant.created_at', 'desc')
+        .select('merchant.*', 'town.name as town_name')) as Array<
+        MerchantRowDb & { town_name: string }
+      >;
+      return rows.map((r) => ({ ...mapMerchant(r), townName: r.town_name }));
     },
 
     async setMerchantStatus(merchantId, status) {

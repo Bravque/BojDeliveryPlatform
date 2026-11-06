@@ -132,6 +132,15 @@ function makeRepo(
       refunds.push({ ...input, id, approvedBy: null, providerRef: null });
       return Promise.resolve(id);
     },
+    listRefunds: () =>
+      Promise.resolve(
+        [...refunds].reverse().map((r) => ({
+          ...r,
+          orderUlid: order.ulid,
+          orderNumber: null,
+          createdAt: new Date(),
+        })),
+      ),
     findRefundByUlid: (ulid: string) =>
       Promise.resolve(refunds.find((r) => r.ulid === ulid) ?? null),
     lockRefundByUlid: (ulid: string) =>
@@ -343,5 +352,27 @@ describe('refund service — reject', () => {
     const view = await svc.rejectRefund(APPROVER, r.ulid);
     expect(view.status).toBe('rejected');
     expect(ledger.txns).toHaveLength(0);
+  });
+});
+
+describe('refund service — list (admin queue)', () => {
+  it('lists refunds newest-first with order ulid and ISO createdAt', async () => {
+    const { repo } = makeRepo();
+    const { svc } = makeSvc(repo);
+    await svc.requestRefund(REQUESTER, 'ORD1', {
+      amountCents: 100,
+      reason: 'first',
+      idempotencyKey: 'r1',
+    });
+    await svc.requestRefund(REQUESTER, 'ORD1', {
+      amountCents: 200,
+      reason: 'second',
+      idempotencyKey: 'r2',
+    });
+
+    const items = await svc.listRefunds();
+    expect(items.map((r) => r.reason)).toEqual(['second', 'first']);
+    expect(items[0]).toMatchObject({ orderUlid: 'ORD1', amountCents: 200, status: 'requested' });
+    expect(typeof items[0]?.createdAt).toBe('string');
   });
 });

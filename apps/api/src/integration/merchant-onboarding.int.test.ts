@@ -144,4 +144,33 @@ describe.skipIf(!DATABASE_URL)('merchant onboarding integration (real MySQL)', (
       .send({ townName: 'Nairobi', name: 'X', categoryType: 'retail', commissionBps: 500 });
     expect(res.status).toBe(400);
   });
+
+  it('GET /admin/merchants lists merchants newest-first with town name', async () => {
+    await request(app).post('/api/v1/admin/merchants').set(auth()).send({
+      townName: 'Migori',
+      name: 'First Shop',
+      categoryType: 'grocery',
+      commissionBps: 800,
+    });
+    const second = await request(app).post('/api/v1/admin/merchants').set(auth()).send({
+      townName: 'Migori',
+      name: 'Second Shop',
+      categoryType: 'restaurant',
+      commissionBps: 1000,
+    });
+    await request(app).post(`/api/v1/admin/merchants/${second.body.ulid}/approve`).set(auth());
+
+    const res = await request(app).get('/api/v1/admin/merchants').set(auth());
+    expect(res.status).toBe(200);
+    expect(res.body.items.map((m: { name: string }) => m.name)).toEqual([
+      'Second Shop',
+      'First Shop',
+    ]);
+    expect(res.body.items[0]).toMatchObject({
+      name: 'Second Shop',
+      townName: 'Migori',
+      status: 'approved',
+    });
+    expect(typeof res.body.items[0].createdAt).toBe('string');
+  });
 });

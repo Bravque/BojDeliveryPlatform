@@ -40,6 +40,14 @@ export function merchantAdminRouter(
   const router = express.Router();
   const adminOnly: RequestHandler[] = [requireAuth, requireRole('admin', 'ops')];
 
+  router.get(
+    '/admin/merchants',
+    ...adminOnly,
+    asyncHandler(async (_req, res) => {
+      res.status(200).json({ items: await merchantService.listMerchants() });
+    }),
+  );
+
   router.post(
     '/admin/merchants',
     ...adminOnly,
