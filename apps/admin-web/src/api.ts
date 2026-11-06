@@ -80,6 +80,48 @@ export interface AuditLogEntry {
   createdAt: string;
 }
 
+/** `MerchantSummary` returned by the admin merchant mutations. */
+export interface MerchantSummary {
+  ulid: string;
+  name: string;
+  categoryType: string;
+  status: string;
+  isOpen: boolean;
+  prepMinutes: number;
+  commissionBps: number;
+  payoutPhoneE164: string | null;
+}
+
+/** `GET /api/v1/admin/merchants` item — summary enriched with town + creation time. */
+export interface AdminMerchant extends MerchantSummary {
+  townName: string;
+  createdAt: string;
+}
+
+export interface CreateMerchantInput {
+  townName: string;
+  name: string;
+  categoryType: string;
+  commissionBps: number;
+  prepMinutes?: number;
+  ownerUserUlid?: string;
+}
+
+/** `RiderSummary` returned by the admin rider mutations. */
+export interface RiderSummary {
+  userUlid: string;
+  status: string;
+  vehicleType: string;
+  isOnline: boolean;
+  payoutPhoneE164: string | null;
+}
+
+/** `GET /api/v1/admin/riders` item — summary enriched with sign-in phone + application time. */
+export interface AdminRider extends RiderSummary {
+  phoneE164: string | null;
+  createdAt: string;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -98,6 +140,28 @@ export interface ApiClient {
   getReconciliationReport(token: string): Promise<ReconciliationReport>;
   runReconcile(token: string): Promise<ReconcileSummary>;
   listAuditLogs(token: string): Promise<AuditLogEntry[]>;
+
+  // --- operations: merchants ---
+  listMerchants(token: string): Promise<AdminMerchant[]>;
+  createMerchant(token: string, input: CreateMerchantInput): Promise<MerchantSummary>;
+  approveMerchant(token: string, ulid: string): Promise<MerchantSummary>;
+  suspendMerchant(token: string, ulid: string, reason: string): Promise<MerchantSummary>;
+  setMerchantPayoutDestination(
+    token: string,
+    ulid: string,
+    phone: string,
+  ): Promise<MerchantSummary>;
+  addMerchantOwner(
+    token: string,
+    ulid: string,
+    userUlid: string,
+    role: 'owner' | 'staff',
+  ): Promise<MerchantSummary>;
+
+  // --- operations: riders ---
+  listRiders(token: string): Promise<AdminRider[]>;
+  approveRider(token: string, ulid: string): Promise<RiderSummary>;
+  suspendRider(token: string, ulid: string, reason: string): Promise<RiderSummary>;
 }
 
 export function createHttpApiClient(baseUrl: string): ApiClient {
@@ -158,6 +222,55 @@ export function createHttpApiClient(baseUrl: string): ApiClient {
         token,
       });
       return res.items;
+    },
+
+    async listMerchants(token) {
+      const res = await request<{ items: AdminMerchant[] }>('GET', '/api/v1/admin/merchants', {
+        token,
+      });
+      return res.items;
+    },
+    createMerchant(token, input) {
+      return request<MerchantSummary>('POST', '/api/v1/admin/merchants', { token, body: input });
+    },
+    approveMerchant(token, ulid) {
+      return request<MerchantSummary>('POST', `/api/v1/admin/merchants/${ulid}/approve`, { token });
+    },
+    suspendMerchant(token, ulid, reason) {
+      return request<MerchantSummary>('POST', `/api/v1/admin/merchants/${ulid}/suspend`, {
+        token,
+        body: { reason },
+      });
+    },
+    setMerchantPayoutDestination(token, ulid, phone) {
+      return request<MerchantSummary>(
+        'POST',
+        `/api/v1/admin/merchants/${ulid}/payout-destination`,
+        {
+          token,
+          body: { phone },
+        },
+      );
+    },
+    addMerchantOwner(token, ulid, userUlid, role) {
+      return request<MerchantSummary>('POST', `/api/v1/admin/merchants/${ulid}/owners`, {
+        token,
+        body: { userUlid, role },
+      });
+    },
+
+    async listRiders(token) {
+      const res = await request<{ items: AdminRider[] }>('GET', '/api/v1/admin/riders', { token });
+      return res.items;
+    },
+    approveRider(token, ulid) {
+      return request<RiderSummary>('POST', `/api/v1/admin/riders/${ulid}/approve`, { token });
+    },
+    suspendRider(token, ulid, reason) {
+      return request<RiderSummary>('POST', `/api/v1/admin/riders/${ulid}/suspend`, {
+        token,
+        body: { reason },
+      });
     },
   };
 }
