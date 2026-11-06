@@ -74,6 +74,16 @@ function makeApi() {
       advance(ulid, 'rejected');
       return Promise.resolve();
     }),
+    // Catalogue methods are unused by the orders journey (covered in menu.test.tsx).
+    getCatalogue: vi.fn(() => Promise.reject(new Error('not used'))),
+    createCategory: vi.fn(() => Promise.reject(new Error('not used'))),
+    createProduct: vi.fn(() => Promise.reject(new Error('not used'))),
+    editProduct: vi.fn(() => Promise.reject(new Error('not used'))),
+    setProductAvailability: vi.fn(() => Promise.reject(new Error('not used'))),
+    setInventory: vi.fn(() => Promise.reject(new Error('not used'))),
+    addOptionGroup: vi.fn(() => Promise.reject(new Error('not used'))),
+    addOption: vi.fn(() => Promise.reject(new Error('not used'))),
+    setOptionAvailability: vi.fn(() => Promise.reject(new Error('not used'))),
   };
   const addOrder = (o: OrderSummary) => {
     orders = { ...orders, orders: [o, ...orders.orders] };

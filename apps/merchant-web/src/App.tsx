@@ -3,6 +3,7 @@ import type { ApiClient, MerchantOrderDetail, MerchantOrders } from './api';
 import type { ConnectMerchantSocket, SocketHandle } from './socket';
 import { clearToken, loadToken, saveToken } from './session';
 import { OrderDrawer, OrdersBoard, type OrderAction } from './orders';
+import { MenuView } from './menu';
 import { Brand, Button, EmptyState, Field, Spinner, Toast } from './ui';
 
 export interface AppProps {
@@ -195,11 +196,11 @@ export function App({ api, connectSocket }: AppProps): JSX.Element {
         </header>
 
         <main className="content">
-          {view === 'orders' ? (
+          {view === 'orders' && (
             <OrdersBoard orders={data.orders} onOpen={(ulid) => void openOrder(ulid, token)} />
-          ) : (
-            <Placeholder view={view} />
           )}
+          {view === 'menu' && <MenuView api={api} token={token} />}
+          {(view === 'store' || view === 'earnings') && <Placeholder view={view} />}
         </main>
       </div>
 
@@ -220,7 +221,6 @@ export function App({ api, connectSocket }: AppProps): JSX.Element {
 
 function Placeholder({ view }: { view: View }): JSX.Element {
   const copy: Record<string, string> = {
-    menu: 'Menu management is coming next — create and edit products, options and stock.',
     store: 'Store settings are coming soon — open/close your store and set prep time.',
     earnings: 'Earnings & settlements are coming soon.',
   };

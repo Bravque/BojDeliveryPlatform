@@ -112,6 +112,54 @@ export function Drawer(props: {
   );
 }
 
+export function Modal(props: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+  footer?: ReactNode;
+}): JSX.Element {
+  return (
+    <div className="modal-overlay" onClick={props.onClose}>
+      <div
+        className="modal"
+        role="dialog"
+        aria-label={props.title}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className="drawer__head">
+          <h2 className="drawer__title">{props.title}</h2>
+          <button type="button" className="icon-btn" aria-label="Close" onClick={props.onClose}>
+            ✕
+          </button>
+        </header>
+        <div className="drawer__body">{props.children}</div>
+        {props.footer && <footer className="drawer__foot">{props.footer}</footer>}
+      </div>
+    </div>
+  );
+}
+
+export function Switch(props: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+}): JSX.Element {
+  return (
+    <label className="switch">
+      <input
+        type="checkbox"
+        role="switch"
+        aria-label={props.label}
+        checked={props.checked}
+        onChange={(e) => props.onChange(e.target.checked)}
+      />
+      <span className="switch__track">
+        <span className="switch__thumb" />
+      </span>
+    </label>
+  );
+}
+
 export function Toast({ message }: { message: string }): JSX.Element {
   return (
     <div className="toast" role="status">

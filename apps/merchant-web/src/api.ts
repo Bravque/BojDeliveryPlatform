@@ -48,8 +48,86 @@ export interface MerchantOrderDetail {
   createdAt: string;
 }
 
+// ---- catalogue (menu management) ------------------------------------------------------------
+export interface ManagedOption {
+  ulid: string;
+  name: string;
+  priceDeltaCents: number;
+  isAvailable: boolean;
+}
+
+export interface ManagedOptionGroup {
+  ulid: string;
+  name: string;
+  minSelect: number;
+  maxSelect: number;
+  options: ManagedOption[];
+}
+
+export interface ManagedInventory {
+  trackStock: boolean;
+  quantity: number;
+  reserved: number;
+}
+
+export interface ManagedProduct {
+  ulid: string;
+  name: string;
+  description: string | null;
+  priceCents: number;
+  currency: string;
+  isAvailable: boolean;
+  version: number;
+  categoryUlid: string | null;
+  inventory: ManagedInventory | null;
+  optionGroups: ManagedOptionGroup[];
+}
+
+export interface ManagedCategory {
+  ulid: string;
+  name: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+export interface MerchantCatalogue {
+  merchant: { ulid: string };
+  categories: ManagedCategory[];
+  products: ManagedProduct[];
+}
+
+export interface ProductSummary {
+  ulid: string;
+  name: string;
+  description: string | null;
+  priceCents: number;
+  currency: string;
+  isAvailable: boolean;
+  version: number;
+}
+
+/** The create-option-group response (no nested options yet — the UI re-fetches the catalogue). */
+export interface OptionGroupSummary {
+  ulid: string;
+  name: string;
+  minSelect: number;
+  maxSelect: number;
+}
+
 export interface LoginResult {
   access: string;
+}
+
+/** Error carrying the HTTP status + the server's `{ error: { code, message } }` envelope. */
+export class ApiError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly code?: string,
+    message?: string,
+  ) {
+    super(message ?? `Request failed: ${status}`);
+    this.name = 'ApiError';
+  }
 }
 
 export interface ApiClient {
@@ -60,55 +138,167 @@ export interface ApiClient {
   startPreparing(token: string, orderUlid: string): Promise<void>;
   markReady(token: string, orderUlid: string): Promise<void>;
   rejectOrder(token: string, orderUlid: string, reason: string): Promise<void>;
+
+  getCatalogue(token: string): Promise<MerchantCatalogue>;
+  createCategory(
+    token: string,
+    input: { name: string; sortOrder?: number },
+  ): Promise<ManagedCategory>;
+  createProduct(
+    token: string,
+    input: { name: string; description?: string; priceCents: number; categoryUlid?: string },
+  ): Promise<ProductSummary>;
+  editProduct(
+    token: string,
+    ulid: string,
+    input: {
+      expectedVersion: number;
+      name?: string;
+      description?: string | null;
+      priceCents?: number;
+      categoryUlid?: string;
+    },
+  ): Promise<ProductSummary>;
+  setProductAvailability(
+    token: string,
+    ulid: string,
+    isAvailable: boolean,
+  ): Promise<ProductSummary>;
+  setInventory(
+    token: string,
+    ulid: string,
+    input: { trackStock: boolean; quantity: number },
+  ): Promise<ManagedInventory>;
+  addOptionGroup(
+    token: string,
+    productUlid: string,
+    input: { name: string; minSelect: number; maxSelect: number },
+  ): Promise<OptionGroupSummary>;
+  addOption(
+    token: string,
+    groupUlid: string,
+    input: { name: string; priceDeltaCents: number; isAvailable?: boolean },
+  ): Promise<ManagedOption>;
+  setOptionAvailability(
+    token: string,
+    optionUlid: string,
+    isAvailable: boolean,
+  ): Promise<{ ulid: string; isAvailable: boolean }>;
 }
 
 export function createHttpApiClient(baseUrl: string): ApiClient {
-  async function post<T>(path: string, body: unknown, token?: string): Promise<T> {
+  async function request<T>(
+    method: string,
+    path: string,
+    opts: { token?: string; body?: unknown } = {},
+  ): Promise<T> {
     const res = await fetch(`${baseUrl}${path}`, {
-      method: 'POST',
+      method,
       headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(opts.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(opts.token ? { Authorization: `Bearer ${opts.token}` } : {}),
       },
-      body: JSON.stringify(body),
+      ...(opts.body !== undefined ? { body: JSON.stringify(opts.body) } : {}),
     });
     if (!res.ok) {
-      throw new Error(`Request failed: ${res.status}`);
+      let code: string | undefined;
+      let message: string | undefined;
+      try {
+        const parsed = (await res.json()) as { error?: { code?: string; message?: string } };
+        code = parsed.error?.code;
+        message = parsed.error?.message;
+      } catch {
+        // non-JSON error body — fall back to the status
+      }
+      throw new ApiError(res.status, code, message);
     }
-    return (await res.json()) as T;
-  }
-
-  async function get<T>(path: string, token: string): Promise<T> {
-    const res = await fetch(`${baseUrl}${path}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) {
-      throw new Error(`Request failed: ${res.status}`);
-    }
-    return (await res.json()) as T;
+    // Some endpoints (actions) return a body we ignore; parse defensively.
+    return (await res.json().catch(() => ({}))) as T;
   }
 
   return {
-    async login(email, password) {
-      return post<LoginResult>('/api/v1/auth/password/login', { email, password });
+    login(email, password) {
+      return request<LoginResult>('POST', '/api/v1/auth/password/login', {
+        body: { email, password },
+      });
     },
-    async listMerchantOrders(token) {
-      return get<MerchantOrders>('/api/v1/merchant/orders', token);
+    listMerchantOrders(token) {
+      return request<MerchantOrders>('GET', '/api/v1/merchant/orders', { token });
     },
-    async getMerchantOrder(token, orderUlid) {
-      return get<MerchantOrderDetail>(`/api/v1/merchant/orders/${orderUlid}`, token);
+    getMerchantOrder(token, orderUlid) {
+      return request<MerchantOrderDetail>('GET', `/api/v1/merchant/orders/${orderUlid}`, { token });
     },
     async acceptOrder(token, orderUlid) {
-      await post(`/api/v1/merchant/orders/${orderUlid}/accept`, {}, token);
+      await request('POST', `/api/v1/merchant/orders/${orderUlid}/accept`, { token, body: {} });
     },
     async startPreparing(token, orderUlid) {
-      await post(`/api/v1/merchant/orders/${orderUlid}/preparing`, {}, token);
+      await request('POST', `/api/v1/merchant/orders/${orderUlid}/preparing`, { token, body: {} });
     },
     async markReady(token, orderUlid) {
-      await post(`/api/v1/merchant/orders/${orderUlid}/ready`, {}, token);
+      await request('POST', `/api/v1/merchant/orders/${orderUlid}/ready`, { token, body: {} });
     },
     async rejectOrder(token, orderUlid, reason) {
-      await post(`/api/v1/merchant/orders/${orderUlid}/reject`, { reason }, token);
+      await request('POST', `/api/v1/merchant/orders/${orderUlid}/reject`, {
+        token,
+        body: { reason },
+      });
+    },
+
+    getCatalogue(token) {
+      return request<MerchantCatalogue>('GET', '/api/v1/merchant/catalogue', { token });
+    },
+    createCategory(token, input) {
+      return request<ManagedCategory>('POST', '/api/v1/merchant/catalogue/categories', {
+        token,
+        body: input,
+      });
+    },
+    createProduct(token, input) {
+      return request<ProductSummary>('POST', '/api/v1/merchant/catalogue/products', {
+        token,
+        body: input,
+      });
+    },
+    editProduct(token, ulid, input) {
+      return request<ProductSummary>('PATCH', `/api/v1/merchant/catalogue/products/${ulid}`, {
+        token,
+        body: input,
+      });
+    },
+    setProductAvailability(token, ulid, isAvailable) {
+      return request<ProductSummary>(
+        'PATCH',
+        `/api/v1/merchant/catalogue/products/${ulid}/availability`,
+        { token, body: { isAvailable } },
+      );
+    },
+    setInventory(token, ulid, input) {
+      return request<ManagedInventory>(
+        'PUT',
+        `/api/v1/merchant/catalogue/products/${ulid}/inventory`,
+        { token, body: input },
+      );
+    },
+    addOptionGroup(token, productUlid, input) {
+      return request<OptionGroupSummary>(
+        'POST',
+        `/api/v1/merchant/catalogue/products/${productUlid}/option-groups`,
+        { token, body: input },
+      );
+    },
+    addOption(token, groupUlid, input) {
+      return request<ManagedOption>(
+        'POST',
+        `/api/v1/merchant/catalogue/option-groups/${groupUlid}/options`,
+        { token, body: input },
+      );
+    },
+    setOptionAvailability(token, optionUlid, isAvailable) {
+      return request<{ ulid: string; isAvailable: boolean }>(
+        'PATCH',
+        `/api/v1/merchant/catalogue/options/${optionUlid}/availability`,
+        { token, body: { isAvailable } },
+      );
     },
   };
 }

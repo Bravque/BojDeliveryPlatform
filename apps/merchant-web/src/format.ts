@@ -25,6 +25,15 @@ export function timeAgo(iso: string, now: number = Date.now()): string {
   return `${day}d ago`;
 }
 
+/** Parse a shillings amount (what the merchant types) into integer cents, or null if invalid. */
+export function parseKesToCents(value: string): number | null {
+  const trimmed = value.trim();
+  if (trimmed === '') return null;
+  const n = Number(trimmed);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n * 100);
+}
+
 /** Human label for an order status (snake_case → Title Case). */
 export function statusLabel(status: string): string {
   return status
