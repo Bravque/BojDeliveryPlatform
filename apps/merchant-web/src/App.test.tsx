@@ -84,6 +84,9 @@ function makeApi() {
     addOptionGroup: vi.fn(() => Promise.reject(new Error('not used'))),
     addOption: vi.fn(() => Promise.reject(new Error('not used'))),
     setOptionAvailability: vi.fn(() => Promise.reject(new Error('not used'))),
+    getPublicMerchant: vi.fn(() => Promise.reject(new Error('not used'))),
+    updateProfile: vi.fn(() => Promise.reject(new Error('not used'))),
+    listSettlements: vi.fn(() => Promise.reject(new Error('not used'))),
   };
   const addOrder = (o: OrderSummary) => {
     orders = { ...orders, orders: [o, ...orders.orders] };

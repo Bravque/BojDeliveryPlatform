@@ -110,6 +110,9 @@ function makeApi() {
       }),
     ),
     setOptionAvailability: vi.fn((_t, ulid, isAvailable) => Promise.resolve({ ulid, isAvailable })),
+    getPublicMerchant: rejects(),
+    updateProfile: rejects(),
+    listSettlements: rejects(),
   };
   return { api };
 }
