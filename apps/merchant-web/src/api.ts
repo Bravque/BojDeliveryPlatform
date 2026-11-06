@@ -114,6 +114,28 @@ export interface OptionGroupSummary {
   maxSelect: number;
 }
 
+/** Public merchant profile (GET /merchants/:ulid) — the source of the current open/prep-time state. */
+export interface PublicMerchant {
+  ulid: string;
+  name: string;
+  categoryType: string;
+  prepMinutes: number;
+  isOpen: boolean;
+  townName: string;
+}
+
+/** One merchant settlement (earnings), from GET /merchant/settlements. */
+export interface SettlementView {
+  ulid: string;
+  periodStart: string;
+  periodEnd: string;
+  grossCents: number;
+  commissionCents: number;
+  refundsCents: number;
+  netCents: number;
+  status: string;
+}
+
 export interface LoginResult {
   access: string;
 }
@@ -184,6 +206,13 @@ export interface ApiClient {
     optionUlid: string,
     isAvailable: boolean,
   ): Promise<{ ulid: string; isAvailable: boolean }>;
+
+  getPublicMerchant(ulid: string): Promise<PublicMerchant>;
+  updateProfile(
+    token: string,
+    patch: { isOpen?: boolean; prepMinutes?: number },
+  ): Promise<{ merchantUlid: string }>;
+  listSettlements(token: string): Promise<SettlementView[]>;
 }
 
 export function createHttpApiClient(baseUrl: string): ApiClient {
@@ -299,6 +328,24 @@ export function createHttpApiClient(baseUrl: string): ApiClient {
         `/api/v1/merchant/catalogue/options/${optionUlid}/availability`,
         { token, body: { isAvailable } },
       );
+    },
+
+    getPublicMerchant(ulid) {
+      return request<PublicMerchant>('GET', `/api/v1/merchants/${ulid}`);
+    },
+    updateProfile(token, patch) {
+      return request<{ merchantUlid: string }>('PATCH', '/api/v1/merchant/profile', {
+        token,
+        body: patch,
+      });
+    },
+    async listSettlements(token) {
+      const res = await request<{ items: SettlementView[] }>(
+        'GET',
+        '/api/v1/merchant/settlements',
+        { token },
+      );
+      return res.items;
     },
   };
 }

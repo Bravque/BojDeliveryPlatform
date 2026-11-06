@@ -4,7 +4,9 @@ import type { ConnectMerchantSocket, SocketHandle } from './socket';
 import { clearToken, loadToken, saveToken } from './session';
 import { OrderDrawer, OrdersBoard, type OrderAction } from './orders';
 import { MenuView } from './menu';
-import { Brand, Button, EmptyState, Field, Spinner, Toast } from './ui';
+import { StoreView } from './store';
+import { EarningsView } from './earnings';
+import { Brand, Button, Field, Spinner, Toast } from './ui';
 
 export interface AppProps {
   api: ApiClient;
@@ -200,7 +202,10 @@ export function App({ api, connectSocket }: AppProps): JSX.Element {
             <OrdersBoard orders={data.orders} onOpen={(ulid) => void openOrder(ulid, token)} />
           )}
           {view === 'menu' && <MenuView api={api} token={token} />}
-          {(view === 'store' || view === 'earnings') && <Placeholder view={view} />}
+          {view === 'store' && (
+            <StoreView api={api} token={token} merchantUlid={data.merchant.ulid} />
+          )}
+          {view === 'earnings' && <EarningsView api={api} token={token} />}
         </main>
       </div>
 
@@ -215,18 +220,6 @@ export function App({ api, connectSocket }: AppProps): JSX.Element {
       )}
 
       {toast && <Toast message={toast} />}
-    </div>
-  );
-}
-
-function Placeholder({ view }: { view: View }): JSX.Element {
-  const copy: Record<string, string> = {
-    store: 'Store settings are coming soon — open/close your store and set prep time.',
-    earnings: 'Earnings & settlements are coming soon.',
-  };
-  return (
-    <div className="card">
-      <EmptyState>{copy[view]}</EmptyState>
     </div>
   );
 }

@@ -727,6 +727,50 @@ body {
   gap: 10px;
 }
 
+/* ---- earnings (settlements) --------------------------------------------------------------- */
+.settle {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  margin-bottom: 14px;
+}
+.settle__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.settle__period {
+  font-weight: 800;
+  font-size: 15px;
+}
+.settle__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 14px;
+}
+.settle__fig {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.settle__fig-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.settle__fig-value {
+  font-size: 15px;
+  font-weight: 700;
+}
+.settle__fig-value--strong {
+  color: var(--green-dark);
+  font-weight: 800;
+}
+
 /* ---- responsive --------------------------------------------------------------------------- */
 @media (max-width: 720px) {
   .shell {
