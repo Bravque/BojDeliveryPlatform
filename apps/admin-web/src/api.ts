@@ -182,6 +182,86 @@ export interface RefundView {
   providerRef: string | null;
 }
 
+/** `GET /api/v1/admin/zones` item — mirrors `ZoneWithTownSummary`. */
+export interface AdminZone {
+  ulid: string;
+  name: string;
+  centerLat: number | null;
+  centerLng: number | null;
+  radiusM: number | null;
+  isActive: boolean;
+  townUlid: string;
+  townName: string;
+}
+
+export interface CreateZoneInput {
+  townName: string;
+  name: string;
+  centerLat: number;
+  centerLng: number;
+  radiusM: number;
+  isActive?: boolean;
+}
+
+export interface UpdateZoneInput {
+  name?: string;
+  centerLat?: number;
+  centerLng?: number;
+  radiusM?: number;
+  isActive?: boolean;
+}
+
+/** `GET /api/v1/admin/zones/:zoneUlid/fee-rules` item — mirrors `FeeRuleSummary`. */
+export interface FeeRule {
+  ulid: string;
+  baseFeeCents: number;
+  perKmCents: number;
+  minFeeCents: number;
+  maxFeeCents: number | null;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
+export interface CreateFeeRuleInput {
+  baseFeeCents: number;
+  perKmCents: number;
+  minFeeCents: number;
+  maxFeeCents?: number | null;
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+}
+
+/** `GET /api/v1/admin/promotions` item — mirrors `PromotionSummary`. */
+export interface Promotion {
+  ulid: string;
+  code: string;
+  type: 'percentage' | 'fixed' | 'free_delivery';
+  valueBps: number | null;
+  valueCents: number | null;
+  maxDiscountCents: number | null;
+  minSubtotalCents: number;
+  perUserLimit: number;
+  totalLimit: number | null;
+  totalRedeemed: number;
+  startsAt: string;
+  endsAt: string;
+  isActive: boolean;
+}
+
+export interface CreatePromotionInput {
+  code: string;
+  type: 'percentage' | 'fixed' | 'free_delivery';
+  valueBps?: number | null;
+  valueCents?: number | null;
+  maxDiscountCents?: number | null;
+  minSubtotalCents?: number;
+  perUserLimit?: number;
+  totalLimit?: number | null;
+  startsAt: string;
+  endsAt: string;
+  isActive?: boolean;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -239,6 +319,17 @@ export interface ApiClient {
   listRefunds(token: string): Promise<RefundListItem[]>;
   approveRefund(token: string, ulid: string): Promise<RefundView>;
   rejectRefund(token: string, ulid: string): Promise<RefundView>;
+
+  // --- config: zones + fee rules ---
+  listZones(token: string): Promise<AdminZone[]>;
+  createZone(token: string, input: CreateZoneInput): Promise<AdminZone>;
+  updateZone(token: string, ulid: string, patch: UpdateZoneInput): Promise<AdminZone>;
+  listFeeRules(token: string, zoneUlid: string): Promise<FeeRule[]>;
+  createFeeRule(token: string, zoneUlid: string, input: CreateFeeRuleInput): Promise<FeeRule>;
+
+  // --- config: promotions ---
+  listPromotions(token: string): Promise<Promotion[]>;
+  createPromotion(token: string, input: CreatePromotionInput): Promise<Promotion>;
 }
 
 export function createHttpApiClient(baseUrl: string): ApiClient {
@@ -401,6 +492,41 @@ export function createHttpApiClient(baseUrl: string): ApiClient {
     },
     rejectRefund(token, ulid) {
       return request<RefundView>('POST', `/api/v1/refunds/${ulid}/reject`, { token });
+    },
+
+    async listZones(token) {
+      const res = await request<{ items: AdminZone[] }>('GET', '/api/v1/admin/zones', { token });
+      return res.items;
+    },
+    createZone(token, input) {
+      return request<AdminZone>('POST', '/api/v1/admin/zones', { token, body: input });
+    },
+    updateZone(token, ulid, patch) {
+      return request<AdminZone>('PATCH', `/api/v1/admin/zones/${ulid}`, { token, body: patch });
+    },
+    async listFeeRules(token, zoneUlid) {
+      const res = await request<{ items: FeeRule[] }>(
+        'GET',
+        `/api/v1/admin/zones/${zoneUlid}/fee-rules`,
+        { token },
+      );
+      return res.items;
+    },
+    createFeeRule(token, zoneUlid, input) {
+      return request<FeeRule>('POST', `/api/v1/admin/zones/${zoneUlid}/fee-rules`, {
+        token,
+        body: input,
+      });
+    },
+
+    async listPromotions(token) {
+      const res = await request<{ items: Promotion[] }>('GET', '/api/v1/admin/promotions', {
+        token,
+      });
+      return res.items;
+    },
+    createPromotion(token, input) {
+      return request<Promotion>('POST', '/api/v1/admin/promotions', { token, body: input });
     },
   };
 }
