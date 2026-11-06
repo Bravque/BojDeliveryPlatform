@@ -36,6 +36,14 @@ export interface RiderProfile {
   status: string;
   vehicleType: string;
   isOnline: boolean;
+  /** M-Pesa withdrawal destination; null = earnings pay out to the sign-in number. */
+  payoutPhoneE164: string | null;
+}
+
+/** Mirrors `RiderEarnings` (`GET /rider/earnings`). */
+export interface RiderEarnings {
+  deliveries: number;
+  totalEarnedCents: number;
 }
 
 export interface ApiClient {
@@ -50,6 +58,8 @@ export interface ApiClient {
   startDelivery(token: string, orderUlid: string): Promise<DeliveryView>;
   completeDelivery(token: string, orderUlid: string, pin: string): Promise<DeliveryView>;
   getMe(token: string): Promise<RiderProfile>;
+  getEarnings(token: string): Promise<RiderEarnings>;
+  setPayoutDestination(token: string, phone: string): Promise<RiderProfile>;
 }
 
 export function createHttpApiClient(baseUrl: string): ApiClient {
@@ -116,6 +126,12 @@ export function createHttpApiClient(baseUrl: string): ApiClient {
     },
     async getMe(token) {
       return json<RiderProfile>('/api/v1/rider/me', auth(token));
+    },
+    async getEarnings(token) {
+      return json<RiderEarnings>('/api/v1/rider/earnings', auth(token));
+    },
+    async setPayoutDestination(token, phone) {
+      return json<RiderProfile>('/api/v1/rider/payout-destination', post(token, { phone }));
     },
   };
 }

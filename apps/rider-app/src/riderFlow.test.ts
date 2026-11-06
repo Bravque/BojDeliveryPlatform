@@ -35,9 +35,40 @@ function makeApi(over: Partial<ApiClient> = {}): ApiClient {
     startDelivery: vi.fn(() => Promise.resolve(delivery('out_for_delivery'))),
     completeDelivery: vi.fn(() => Promise.resolve(delivery('delivered'))),
     getMe: vi.fn(() =>
-      Promise.resolve({ status: 'approved', vehicleType: 'motorbike', isOnline: true }),
+      Promise.resolve({
+        status: 'approved',
+        vehicleType: 'motorbike',
+        isOnline: true,
+        payoutPhoneE164: null,
+      }),
+    ),
+    getEarnings: vi.fn(() => Promise.resolve({ deliveries: 4, totalEarnedCents: 28_000 })),
+    setPayoutDestination: vi.fn((_t, phone) =>
+      Promise.resolve({
+        status: 'approved',
+        vehicleType: 'motorbike',
+        isOnline: true,
+        payoutPhoneE164: phone,
+      }),
     ),
     ...over,
+  };
+}
+
+/** An in-memory token store for exercising session persistence in node (no localStorage). */
+function memStore(initial: string | null = null) {
+  let token = initial;
+  return {
+    store: {
+      load: () => token,
+      save: (t: string) => {
+        token = t;
+      },
+      clear: () => {
+        token = null;
+      },
+    },
+    get: () => token,
   };
 }
 
@@ -179,6 +210,47 @@ describe('rider flow — critical journey', () => {
     model.signOut();
     expect(model.getState().screen).toBe('phone');
     expect(model.getState().token).toBeNull();
+  });
+
+  it('Account tab loads earnings; setPayoutDestination updates the profile', async () => {
+    const api = makeApi();
+    const model = createRiderModel(api);
+    await model.verifyOtp('123456');
+
+    model.goToTab('account');
+    await new Promise((r) => setTimeout(r, 0)); // loadProfile + loadEarnings fire async
+    expect(api.getEarnings).toHaveBeenCalledWith('tok');
+    expect(model.getState().earnings).toEqual({ deliveries: 4, totalEarnedCents: 28_000 });
+
+    await model.setPayoutDestination('+254712345678');
+    expect(api.setPayoutDestination).toHaveBeenCalledWith('tok', '+254712345678');
+    expect(model.getState().me?.payoutPhoneE164).toBe('+254712345678');
+  });
+
+  it('surfaces an error when saving the payout number fails', async () => {
+    const api = makeApi({
+      setPayoutDestination: vi.fn(() => Promise.reject(new Error('Request failed: 400'))),
+    });
+    const model = createRiderModel(api);
+    await model.verifyOtp('123456');
+    await model.setPayoutDestination('bad');
+    expect(model.getState().error).toBe('Could not save your payout number');
+  });
+
+  it('persists the token on verify and restores the session on startup', async () => {
+    const mem = memStore();
+    const model = createRiderModel(makeApi(), mem.store);
+    expect(model.getState().screen).toBe('phone');
+    await model.verifyOtp('123456');
+    expect(mem.get()).toBe('tok'); // saved
+
+    // A fresh model with the same (seeded) store starts signed in on the Shift tab.
+    const restored = createRiderModel(makeApi(), memStore('tok').store);
+    expect(restored.getState().token).toBe('tok');
+    expect(restored.getState().screen).toBe('offers');
+
+    model.signOut();
+    expect(mem.get()).toBeNull(); // cleared
   });
 
   it('notifies subscribers on state changes', async () => {
