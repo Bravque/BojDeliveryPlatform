@@ -356,6 +356,9 @@ body {
 .table tbody tr:hover {
   background: var(--surface-alt);
 }
+.table__row--click {
+  cursor: pointer;
+}
 .table td.num,
 .table th.num {
   text-align: right;

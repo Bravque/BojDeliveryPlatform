@@ -2,6 +2,8 @@ import { useState } from 'react';
 import type { ApiClient, Period } from './api';
 import { OverviewView } from './overview';
 import { AuditView } from './audit';
+import { MerchantsView } from './merchants';
+import { RidersView } from './riders';
 import { Brand, Button, EmptyState, Field } from './ui';
 
 export interface AppProps {
@@ -95,8 +97,13 @@ export function App({ api, initialPeriod }: AppProps): JSX.Element {
 
         <main className="content">
           {view === 'overview' && <OverviewView api={api} token={token} initialPeriod={period} />}
+          {view === 'merchants' && <MerchantsView api={api} token={token} />}
+          {view === 'riders' && <RidersView api={api} token={token} />}
           {view === 'audit' && <AuditView api={api} token={token} />}
-          {view !== 'overview' && view !== 'audit' && (
+          {(view === 'settlements' ||
+            view === 'payouts' ||
+            view === 'refunds' ||
+            view === 'config') && (
             <EmptyState>{active.label} — coming in a later increment.</EmptyState>
           )}
         </main>
