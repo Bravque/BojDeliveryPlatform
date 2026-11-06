@@ -1,18 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import type { AuditEntry } from '../auth/repo';
 import { createRiderService, type Actor } from './rider-service';
-import type { RiderEarnings, RiderRecord, RiderRepo, RiderStatus, VehicleType } from './repo';
+import type {
+  RiderEarnings,
+  RiderListRow,
+  RiderRecord,
+  RiderRepo,
+  RiderStatus,
+  VehicleType,
+} from './repo';
 
 class FakeRiderRepo implements RiderRepo {
   private readonly usersByUlid = new Map<string, number>();
   private readonly ulidByUserId = new Map<number, string>();
+  private readonly phonesByUserId = new Map<number, string>();
   readonly riders: RiderRecord[] = [];
   readonly globalRoles: { userId: number; roleCode: string }[] = [];
   readonly earningsByUser = new Map<number, RiderEarnings>();
 
-  addUser(ulid: string, id: number): void {
+  addUser(ulid: string, id: number, phoneE164?: string): void {
     this.usersByUlid.set(ulid, id);
     this.ulidByUserId.set(id, ulid);
+    if (phoneE164 !== undefined) {
+      this.phonesByUserId.set(id, phoneE164);
+    }
   }
 
   findUserIdByUlid(ulid: string): Promise<number | null> {
@@ -77,6 +88,16 @@ class FakeRiderRepo implements RiderRepo {
   getEarnings(userId: number): Promise<RiderEarnings> {
     return Promise.resolve(
       this.earningsByUser.get(userId) ?? { deliveries: 0, totalEarnedCents: 0 },
+    );
+  }
+  listRiders(): Promise<RiderListRow[]> {
+    // Newest first, mirroring the Knex `order by created_at desc`.
+    return Promise.resolve(
+      [...this.riders].reverse().map((r) => ({
+        ...r,
+        phoneE164: this.phonesByUserId.get(r.userId) ?? null,
+        createdAt: new Date(),
+      })),
     );
   }
 }
@@ -185,5 +206,32 @@ describe('rider onboarding service', () => {
     await svc.applyAsRider(APPLICANT, { vehicleType: 'motorbike' });
     expect(await thrownStatus(svc.setPayoutDestination(APPLICANT, 'not-a-phone'))).toBe(400);
     expect(await thrownStatus(svc.setPayoutDestination(ADMIN, '0712345678'))).toBe(404);
+  });
+
+  it('lists riders newest-first with phone, status, and ISO createdAt', async () => {
+    const { svc, repo } = setup();
+    repo.addUser('APPLICANT-ULID', 42, '+254712345678');
+    repo.addUser('RIDER2-ULID', 43, '+254700000043');
+    await svc.applyAsRider(APPLICANT, { vehicleType: 'motorbike' });
+    await svc.applyAsRider(
+      { ulid: 'RIDER2-ULID', roles: ['customer'] },
+      { vehicleType: 'bicycle' },
+    );
+    await svc.approveRider(ADMIN, 'APPLICANT-ULID');
+
+    const items = await svc.listRiders();
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({
+      userUlid: 'RIDER2-ULID',
+      vehicleType: 'bicycle',
+      status: 'pending',
+      phoneE164: '+254700000043',
+    });
+    expect(items[1]).toMatchObject({
+      userUlid: 'APPLICANT-ULID',
+      status: 'approved',
+      phoneE164: '+254712345678',
+    });
+    expect(typeof items[0]?.createdAt).toBe('string');
   });
 });

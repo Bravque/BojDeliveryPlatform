@@ -210,6 +210,15 @@ const requestRefundSchema = z.object({
 export function refundsRouter(refundService: RefundService, requireAuth: RequestHandler): Router {
   const router = express.Router();
 
+  router.get(
+    '/admin/refunds',
+    requireAuth,
+    requirePolicy('audit:read'),
+    asyncHandler(async (_req, res) => {
+      res.status(200).json({ items: await refundService.listRefunds() });
+    }),
+  );
+
   router.post(
     '/orders/:ulid/refunds',
     requireAuth,

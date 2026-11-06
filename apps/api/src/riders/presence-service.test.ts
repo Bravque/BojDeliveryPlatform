@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createPresenceService, type Actor } from './presence-service';
-import type { RiderRecord, RiderRepo, RiderStatus } from './repo';
+import type { RiderListRow, RiderRecord, RiderRepo, RiderStatus } from './repo';
 
 class FakeRiderRepo implements RiderRepo {
   rider: RiderRecord;
@@ -46,6 +46,9 @@ class FakeRiderRepo implements RiderRepo {
   }
   findRiderByUserUlid(): Promise<RiderRecord | null> {
     return Promise.resolve(null);
+  }
+  listRiders(): Promise<RiderListRow[]> {
+    return Promise.resolve([]);
   }
   setRiderStatus(_userId: number, _status: RiderStatus): Promise<void> {
     return Promise.resolve();

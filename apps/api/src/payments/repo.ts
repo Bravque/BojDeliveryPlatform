@@ -36,6 +36,13 @@ export interface InsertRefundInput {
   idempotencyKey: string;
 }
 
+/** A refund plus its order ulid/number + creation time, for the admin console queue. */
+export type RefundListRow = RefundRecord & {
+  orderUlid: string | null;
+  orderNumber: string | null;
+  createdAt: Date;
+};
+
 export interface OrderForPayment {
   id: number;
   ulid: string;
@@ -124,6 +131,8 @@ export interface PaymentsRepo {
   /** Total of already-completed refunds for an order (the amount already returned). */
   sumCompletedRefunds(orderId: number): Promise<number>;
   insertRefund(input: InsertRefundInput): Promise<number>;
+  /** All refunds with their order ulid/number, newest first (admin console queue). */
+  listRefunds(): Promise<RefundListRow[]>;
   findRefundByUlid(ulid: string): Promise<RefundRecord | null>;
   findRefundByIdempotencyKey(key: string): Promise<RefundRecord | null>;
   /** Load a refund inside a transaction, locking the row (FOR UPDATE). */
@@ -470,6 +479,29 @@ export function createKnexPaymentsRepo(exec: Knex): PaymentsRepo {
         completed_at: input.status === 'completed' ? exec.raw('CURRENT_TIMESTAMP(3)') : null,
       });
       return Number(id);
+    },
+
+    async listRefunds() {
+      const rows = (await exec('refund')
+        .leftJoin('order', 'order.id', 'refund.order_id')
+        .orderBy('refund.created_at', 'desc')
+        .select(
+          'refund.*',
+          'order.ulid as order_ulid',
+          'order.order_number as order_number',
+        )) as Array<
+        RefundRowDb & {
+          order_ulid: string | null;
+          order_number: string | null;
+          created_at: string | Date;
+        }
+      >;
+      return rows.map((r) => ({
+        ...mapRefund(r),
+        orderUlid: r.order_ulid ?? null,
+        orderNumber: r.order_number ?? null,
+        createdAt: new Date(r.created_at),
+      }));
     },
 
     async findRefundByUlid(ulid) {

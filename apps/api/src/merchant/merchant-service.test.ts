@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { AuditEntry } from '../auth/repo';
 import { createMerchantService, type Actor } from './merchant-service';
-import type { CreateMerchantInput, MerchantRecord, MerchantRepo, MerchantUserRole } from './repo';
+import type {
+  CreateMerchantInput,
+  MerchantListRow,
+  MerchantRecord,
+  MerchantRepo,
+  MerchantUserRole,
+} from './repo';
 
 class FakeMerchantRepo implements MerchantRepo {
   private readonly towns = new Map<string, number>();
@@ -43,6 +49,14 @@ class FakeMerchantRepo implements MerchantRepo {
   }
   findMerchantByUlid(ulid: string): Promise<MerchantRecord | null> {
     return Promise.resolve(this.merchants.find((m) => m.ulid === ulid) ?? null);
+  }
+  listMerchants(): Promise<MerchantListRow[]> {
+    const townName = (id: number): string =>
+      [...this.towns.entries()].find(([, tid]) => tid === id)?.[0] ?? '';
+    // Newest first, mirroring the Knex `order by created_at desc`.
+    return Promise.resolve(
+      [...this.merchants].reverse().map((m) => ({ ...m, townName: townName(m.townId) })),
+    );
   }
   setMerchantStatus(merchantId: number, status: MerchantRecord['status']): Promise<void> {
     const m = this.merchants.find((x) => x.id === merchantId);
@@ -180,6 +194,19 @@ describe('merchant onboarding service', () => {
   it('returns 404 setting a payout destination on an unknown merchant', async () => {
     const { svc } = setup();
     expect(await thrownStatus(svc.setPayoutDestination(ADMIN, 'nope', '0712345678'))).toBe(404);
+  });
+
+  it('lists merchants newest-first with town name and ISO createdAt', async () => {
+    const { svc } = setup();
+    await svc.createMerchant(ADMIN, { ...baseInput, name: 'First' });
+    const second = await svc.createMerchant(ADMIN, { ...baseInput, name: 'Second' });
+    await svc.approveMerchant(ADMIN, second.ulid);
+
+    const items = await svc.listMerchants();
+    expect(items.map((m) => m.name)).toEqual(['Second', 'First']);
+    expect(items[0]).toMatchObject({ name: 'Second', townName: 'Migori', status: 'approved' });
+    expect(typeof items[0]?.createdAt).toBe('string');
+    expect(items[1]).toMatchObject({ name: 'First', payoutPhoneE164: null });
   });
 
   it('adds a staff member and grants the merchant_staff role', async () => {

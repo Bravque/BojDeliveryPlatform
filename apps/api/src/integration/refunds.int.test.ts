@@ -293,6 +293,35 @@ describe.skipIf(!DATABASE_URL)('refunds integration (real MySQL)', () => {
     expect(await db('ledger_transaction').where({ kind: 'order_refund' })).toHaveLength(1);
   });
 
+  it('GET /admin/refunds lists refunds with order ulid/number for finance, forbids customer', async () => {
+    const { orderUlid } = await capturedOrder();
+    const requested = await request(app)
+      .post(`/api/v1/orders/${orderUlid}/refunds`)
+      .set(opsAuth())
+      .set('Idempotency-Key', 'ref-1')
+      .send({ amountCents: 5_000, reason: 'customer dispute' });
+    expect(requested.status).toBe(201);
+
+    const list = await request(app).get('/api/v1/admin/refunds').set(financeAuth());
+    expect(list.status).toBe(200);
+    expect(list.body.items).toHaveLength(1);
+    expect(list.body.items[0]).toMatchObject({
+      ulid: requested.body.ulid,
+      orderUlid,
+      status: 'requested',
+      amountCents: 5_000,
+      reason: 'customer dispute',
+    });
+    expect(typeof list.body.items[0].orderNumber).toBe('string');
+    expect(typeof list.body.items[0].createdAt).toBe('string');
+
+    // A customer may not read the refund queue.
+    const forbidden = await request(app)
+      .get('/api/v1/admin/refunds')
+      .set({ Authorization: `Bearer ${tokenFor(newUlid(), ['customer'])}` });
+    expect(forbidden.status).toBe(403);
+  });
+
   it('separation of duties: the requester cannot approve their own refund (403)', async () => {
     const { orderUlid } = await capturedOrder();
     const requested = await request(app)

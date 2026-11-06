@@ -118,6 +118,14 @@ export function adminRiderRouter(riderService: RiderService, requireAuth: Reques
   const router = express.Router();
   const adminOnly: RequestHandler[] = [requireAuth, requireRole('admin', 'ops')];
 
+  router.get(
+    '/admin/riders',
+    ...adminOnly,
+    asyncHandler(async (_req, res) => {
+      res.status(200).json({ items: await riderService.listRiders() });
+    }),
+  );
+
   router.post(
     '/admin/riders/:ulid/approve',
     ...adminOnly,

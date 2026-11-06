@@ -76,6 +76,10 @@ const refundService: RefundService = {
   processReversalResult: () => Promise.resolve('completed'),
   simulate: () => Promise.resolve('completed'),
   getRefund: () => Promise.resolve(refundView),
+  listRefunds: () =>
+    Promise.resolve([
+      { ...refundView, orderNumber: 'BOJ-000001', createdAt: '2026-01-01T00:00:00.000Z' },
+    ]),
 };
 
 function app() {
@@ -210,6 +214,24 @@ describe('admin reconciliation', () => {
 });
 
 describe('refunds', () => {
+  it('list: allows finance (200), forbids customer (403), 401 unauthenticated', async () => {
+    const ok = await request(app())
+      .get('/api/v1/admin/refunds')
+      .set('Authorization', `Bearer ${tokenFor(['finance'])}`);
+    expect(ok.status).toBe(200);
+    expect(ok.body.items).toHaveLength(1);
+    expect(ok.body.items[0]).toMatchObject({ ulid: 'REF1', orderNumber: 'BOJ-000001' });
+
+    expect(
+      (
+        await request(app())
+          .get('/api/v1/admin/refunds')
+          .set('Authorization', `Bearer ${tokenFor(['customer'])}`)
+      ).status,
+    ).toBe(403);
+    expect((await request(app()).get('/api/v1/admin/refunds')).status).toBe(401);
+  });
+
   it('request: requires an Idempotency-Key, forbids customer, allows ops (201)', async () => {
     // Customer is forbidden regardless of key.
     expect(

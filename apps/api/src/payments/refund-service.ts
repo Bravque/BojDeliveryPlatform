@@ -29,6 +29,12 @@ export interface RefundView {
   providerRef: string | null;
 }
 
+/** A refund enriched for the admin console queue (order number + request time). */
+export interface RefundListItem extends RefundView {
+  orderNumber: string | null;
+  createdAt: string;
+}
+
 export type RefundExecOutcome = 'completed' | 'failed' | 'already_final';
 
 /** The transaction-bound repos a refund mutation needs: refund/payment/order writes + the ledger. */
@@ -280,7 +286,31 @@ export function createRefundService(deps: RefundServiceDeps) {
     return toView(refund);
   }
 
-  return { requestRefund, approveRefund, rejectRefund, processReversalResult, simulate, getRefund };
+  /** Every refund for the admin console queue (read-only; newest first). */
+  async function listRefunds(): Promise<RefundListItem[]> {
+    const rows = await readRepo.listRefunds();
+    return rows.map((r) => ({
+      ulid: r.ulid,
+      orderUlid: r.orderUlid,
+      orderNumber: r.orderNumber,
+      status: r.status,
+      source: r.source,
+      amountCents: r.amountCents,
+      reason: r.reason,
+      providerRef: r.providerRef,
+      createdAt: r.createdAt.toISOString(),
+    }));
+  }
+
+  return {
+    requestRefund,
+    approveRefund,
+    rejectRefund,
+    processReversalResult,
+    simulate,
+    getRefund,
+    listRefunds,
+  };
 }
 
 export type RefundService = ReturnType<typeof createRefundService>;
