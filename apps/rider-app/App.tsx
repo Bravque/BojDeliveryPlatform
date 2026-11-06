@@ -5,6 +5,7 @@ import {
   type ApiClient,
   type DeliveryView,
   type RiderOfferView,
+  type VehicleType,
   createHttpApiClient,
 } from './src/api';
 import {
@@ -66,6 +67,18 @@ export function RiderApp({ api, connectSocket }: AppProps = {}): JSX.Element {
     const handle = connect(state.token, () => void model.onOfferPush());
     return () => handle.close();
   }, [state.online, state.token, connect, model]);
+
+  // While online, ping presence periodically so the rider stays a fresh offer candidate. (Demo
+  // location; a native build would use the device GPS.)
+  useEffect(() => {
+    if (!state.online) {
+      return;
+    }
+    const DEMO_LOCATION = { lat: -1.0634, lng: 34.4731 }; // Migori CBD
+    void model.ping(DEMO_LOCATION.lat, DEMO_LOCATION.lng);
+    const id = setInterval(() => void model.ping(DEMO_LOCATION.lat, DEMO_LOCATION.lng), 30_000);
+    return () => clearInterval(id);
+  }, [state.online, model]);
 
   const banner = state.busy ? (
     <View style={{ paddingVertical: 10 }}>
@@ -147,6 +160,10 @@ function renderScreen(
           onSubmit={(c) => void model.verifyOtp(c)}
         />
       );
+    case 'apply':
+      return <ApplyScreen model={model} error={state.error} />;
+    case 'pending':
+      return <PendingScreen model={model} state={state} />;
     case 'offers':
       return <OffersScreen model={model} state={state} banner={banner} />;
     case 'delivery':
@@ -212,6 +229,85 @@ function OtpScreen({
   );
 }
 
+// ---- onboarding ------------------------------------------------------------------------------
+
+const VEHICLES: { key: VehicleType; icon: string; label: string }[] = [
+  { key: 'motorbike', icon: '🏍️', label: 'Motorbike' },
+  { key: 'bicycle', icon: '🚲', label: 'Bicycle' },
+  { key: 'car', icon: '🚗', label: 'Car' },
+  { key: 'foot', icon: '🚶', label: 'On foot' },
+];
+
+function ApplyScreen({ model, error }: { model: RiderModel; error: string | null }): JSX.Element {
+  const [vehicle, setVehicle] = useState<VehicleType>('motorbike');
+  return (
+    <PaddedScreen>
+      <Brand />
+      <Title>Become a rider</Title>
+      <Muted>Choose your vehicle to apply. An admin reviews and approves your account.</Muted>
+      {error ? <Alert message={error} /> : null}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 8 }}>
+        {VEHICLES.map((v) => {
+          const on = v.key === vehicle;
+          return (
+            <Pressable
+              key={v.key}
+              accessibilityRole="button"
+              accessibilityLabel={v.label}
+              onPress={() => setVehicle(v.key)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                borderWidth: 2,
+                borderColor: on ? colors.primary : colors.border,
+                backgroundColor: on ? '#e4f8ee' : colors.surface,
+                borderRadius: 14,
+                paddingVertical: 12,
+                paddingHorizontal: 16,
+                marginRight: 10,
+                marginBottom: 10,
+              }}
+            >
+              <Text style={{ fontSize: 18, marginRight: 8 }}>{v.icon}</Text>
+              <Text style={{ fontWeight: '800', color: on ? colors.primaryDark : colors.text }}>
+                {v.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <PrimaryButton title="Apply to ride" onPress={() => void model.apply(vehicle)} />
+      <SecondaryButton title="Sign out" onPress={() => model.signOut()} />
+    </PaddedScreen>
+  );
+}
+
+function PendingScreen({ model, state }: { model: RiderModel; state: RiderState }): JSX.Element {
+  const status = state.me?.status ?? 'pending';
+  const suspended = status === 'suspended';
+  return (
+    <PaddedScreen>
+      <Brand />
+      <Text style={{ fontSize: 48, textAlign: 'center', marginBottom: 8 }}>
+        {suspended ? '⛔' : '⏳'}
+      </Text>
+      <Title>{suspended ? 'Account suspended' : 'Application received'}</Title>
+      <Muted>
+        {suspended
+          ? 'Your rider account is suspended. Please contact support to restore it.'
+          : 'Thanks for applying! An admin will review your account shortly — check back soon.'}
+      </Muted>
+      {state.error ? <Alert message={state.error} /> : null}
+      <Card>
+        <AccountRow label="Status" value={status} />
+        {state.me ? <AccountRow label="Vehicle" value={state.me.vehicleType} /> : null}
+      </Card>
+      <PrimaryButton title="Check again" onPress={() => void model.refreshStatus()} />
+      <SecondaryButton title="Sign out" onPress={() => model.signOut()} />
+    </PaddedScreen>
+  );
+}
+
 // ---- offers ----------------------------------------------------------------------------------
 
 function OffersScreen({
@@ -273,6 +369,7 @@ function OffersScreen({
                 key={o.offerId}
                 offer={o}
                 onAccept={() => void model.acceptOffer(o.offerId)}
+                onDecline={() => void model.declineOffer(o.offerId)}
               />
             ))
           )}
@@ -285,9 +382,11 @@ function OffersScreen({
 function OfferCard({
   offer,
   onAccept,
+  onDecline,
 }: {
   offer: RiderOfferView;
   onAccept: () => void;
+  onDecline: () => void;
 }): JSX.Element {
   return (
     <Card>
@@ -320,6 +419,7 @@ function OfferCard({
         </View>
       </View>
       <PrimaryButton title="Accept delivery" onPress={onAccept} />
+      <SecondaryButton title="Decline" onPress={onDecline} />
     </Card>
   );
 }
