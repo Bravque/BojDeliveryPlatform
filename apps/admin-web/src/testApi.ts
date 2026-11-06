@@ -34,6 +34,13 @@ export function fakeApi(over: Partial<ApiClient> = {}): ApiClient {
     listRefunds: vi.fn(),
     approveRefund: vi.fn(),
     rejectRefund: vi.fn(),
+    listZones: vi.fn(),
+    createZone: vi.fn(),
+    updateZone: vi.fn(),
+    listFeeRules: vi.fn(),
+    createFeeRule: vi.fn(),
+    listPromotions: vi.fn(),
+    createPromotion: vi.fn(),
     ...over,
   };
 }

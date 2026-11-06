@@ -133,7 +133,7 @@ describe('admin dashboard — critical journey', () => {
     await waitFor(() => expect(api.getReportSummary).not.toHaveBeenCalled());
   });
 
-  it('unbuilt sections show a placeholder', async () => {
+  it('navigates between sections via the sidebar', async () => {
     const user = userEvent.setup();
     const { api } = makeApi();
     render(<App api={api} />);
@@ -141,7 +141,7 @@ describe('admin dashboard — critical journey', () => {
     await screen.findByRole('heading', { name: 'Overview', level: 1 });
 
     await user.click(screen.getByRole('button', { name: /Config/ }));
-    expect(screen.getByText(/coming in a later increment/i)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Configuration' })).toBeInTheDocument();
   });
 
   it('defaultPeriod returns a 30-day window ending today', () => {
