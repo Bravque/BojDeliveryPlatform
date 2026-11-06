@@ -122,6 +122,66 @@ export interface AdminRider extends RiderSummary {
   createdAt: string;
 }
 
+/** `GET /api/v1/admin/settlements` item — mirrors `SettlementView`. */
+export interface SettlementView {
+  ulid: string;
+  merchantUlid: string;
+  periodStart: string;
+  periodEnd: string;
+  grossCents: number;
+  commissionCents: number;
+  refundsCents: number;
+  netCents: number;
+  status: string;
+}
+
+export interface GenerateSettlementsResult {
+  generated: number;
+  skipped: number;
+  settlements: SettlementView[];
+}
+
+/** `GET /api/v1/admin/payouts` item — mirrors `PayoutView`. */
+export interface PayoutView {
+  ulid: string;
+  payeeType: string;
+  amountCents: number;
+  status: string;
+  financeApproved: boolean;
+  opsApproved: boolean;
+  externalRef: string | null;
+}
+
+export interface GeneratePayoutsResult {
+  generated: number;
+  skipped: number;
+  payouts: PayoutView[];
+}
+
+/** `GET /api/v1/admin/refunds` item — mirrors `RefundListItem`. */
+export interface RefundListItem {
+  ulid: string;
+  orderUlid: string | null;
+  orderNumber: string | null;
+  status: string;
+  source: string;
+  amountCents: number;
+  reason: string;
+  providerRef: string | null;
+  createdAt: string;
+}
+
+/** `POST /api/v1/refunds/:ulid/{approve,reject}` — mirrors `RefundView`. */
+export interface RefundView {
+  ulid: string;
+  orderUlid: string | null;
+  status: string;
+  source: string;
+  amountCents: number;
+  reason: string;
+  providerRef: string | null;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -162,6 +222,23 @@ export interface ApiClient {
   listRiders(token: string): Promise<AdminRider[]>;
   approveRider(token: string, ulid: string): Promise<RiderSummary>;
   suspendRider(token: string, ulid: string, reason: string): Promise<RiderSummary>;
+
+  // --- finance: settlements ---
+  listSettlements(token: string): Promise<SettlementView[]>;
+  generateSettlements(token: string, period: Period): Promise<GenerateSettlementsResult>;
+  approveSettlement(token: string, ulid: string): Promise<SettlementView>;
+
+  // --- finance: payouts ---
+  listPayouts(token: string): Promise<PayoutView[]>;
+  generatePayouts(token: string, period: Period): Promise<GeneratePayoutsResult>;
+  approvePayoutFinance(token: string, ulid: string): Promise<PayoutView>;
+  approvePayoutOps(token: string, ulid: string): Promise<PayoutView>;
+  executePayout(token: string, ulid: string): Promise<PayoutView>;
+
+  // --- finance: refunds ---
+  listRefunds(token: string): Promise<RefundListItem[]>;
+  approveRefund(token: string, ulid: string): Promise<RefundView>;
+  rejectRefund(token: string, ulid: string): Promise<RefundView>;
 }
 
 export function createHttpApiClient(baseUrl: string): ApiClient {
@@ -271,6 +348,59 @@ export function createHttpApiClient(baseUrl: string): ApiClient {
         token,
         body: { reason },
       });
+    },
+
+    async listSettlements(token) {
+      const res = await request<{ items: SettlementView[] }>('GET', '/api/v1/admin/settlements', {
+        token,
+      });
+      return res.items;
+    },
+    generateSettlements(token, period) {
+      return request<GenerateSettlementsResult>('POST', '/api/v1/admin/settlements/generate', {
+        token,
+        body: period,
+      });
+    },
+    approveSettlement(token, ulid) {
+      return request<SettlementView>('POST', `/api/v1/admin/settlements/${ulid}/approve`, {
+        token,
+      });
+    },
+
+    async listPayouts(token) {
+      const res = await request<{ items: PayoutView[] }>('GET', '/api/v1/admin/payouts', { token });
+      return res.items;
+    },
+    generatePayouts(token, period) {
+      return request<GeneratePayoutsResult>('POST', '/api/v1/admin/payouts/generate', {
+        token,
+        body: period,
+      });
+    },
+    approvePayoutFinance(token, ulid) {
+      return request<PayoutView>('POST', `/api/v1/admin/payouts/${ulid}/approve-finance`, {
+        token,
+      });
+    },
+    approvePayoutOps(token, ulid) {
+      return request<PayoutView>('POST', `/api/v1/admin/payouts/${ulid}/approve-ops`, { token });
+    },
+    executePayout(token, ulid) {
+      return request<PayoutView>('POST', `/api/v1/admin/payouts/${ulid}/execute`, { token });
+    },
+
+    async listRefunds(token) {
+      const res = await request<{ items: RefundListItem[] }>('GET', '/api/v1/admin/refunds', {
+        token,
+      });
+      return res.items;
+    },
+    approveRefund(token, ulid) {
+      return request<RefundView>('POST', `/api/v1/refunds/${ulid}/approve`, { token });
+    },
+    rejectRefund(token, ulid) {
+      return request<RefundView>('POST', `/api/v1/refunds/${ulid}/reject`, { token });
     },
   };
 }

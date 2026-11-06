@@ -23,6 +23,17 @@ export function fakeApi(over: Partial<ApiClient> = {}): ApiClient {
     listRiders: vi.fn(),
     approveRider: vi.fn(),
     suspendRider: vi.fn(),
+    listSettlements: vi.fn(),
+    generateSettlements: vi.fn(),
+    approveSettlement: vi.fn(),
+    listPayouts: vi.fn(),
+    generatePayouts: vi.fn(),
+    approvePayoutFinance: vi.fn(),
+    approvePayoutOps: vi.fn(),
+    executePayout: vi.fn(),
+    listRefunds: vi.fn(),
+    approveRefund: vi.fn(),
+    rejectRefund: vi.fn(),
     ...over,
   };
 }

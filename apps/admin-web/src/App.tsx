@@ -4,6 +4,9 @@ import { OverviewView } from './overview';
 import { AuditView } from './audit';
 import { MerchantsView } from './merchants';
 import { RidersView } from './riders';
+import { SettlementsView } from './settlements';
+import { PayoutsView } from './payouts';
+import { RefundsView } from './refunds';
 import { Brand, Button, EmptyState, Field } from './ui';
 
 export interface AppProps {
@@ -99,11 +102,11 @@ export function App({ api, initialPeriod }: AppProps): JSX.Element {
           {view === 'overview' && <OverviewView api={api} token={token} initialPeriod={period} />}
           {view === 'merchants' && <MerchantsView api={api} token={token} />}
           {view === 'riders' && <RidersView api={api} token={token} />}
+          {view === 'settlements' && <SettlementsView api={api} token={token} />}
+          {view === 'payouts' && <PayoutsView api={api} token={token} />}
+          {view === 'refunds' && <RefundsView api={api} token={token} />}
           {view === 'audit' && <AuditView api={api} token={token} />}
-          {(view === 'settlements' ||
-            view === 'payouts' ||
-            view === 'refunds' ||
-            view === 'config') && (
+          {view === 'config' && (
             <EmptyState>{active.label} — coming in a later increment.</EmptyState>
           )}
         </main>

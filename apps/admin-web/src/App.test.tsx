@@ -140,7 +140,7 @@ describe('admin dashboard — critical journey', () => {
     await login(user);
     await screen.findByRole('heading', { name: 'Overview', level: 1 });
 
-    await user.click(screen.getByRole('button', { name: /Settlements/ }));
+    await user.click(screen.getByRole('button', { name: /Config/ }));
     expect(screen.getByText(/coming in a later increment/i)).toBeInTheDocument();
   });
 
