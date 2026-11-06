@@ -1,6 +1,7 @@
 import type { AuditService } from '../auth/audit-service';
-import { conflict, notFound, unauthorized } from '../http/errors';
-import type { RiderRecord, RiderRepo, VehicleType } from './repo';
+import { badRequest, conflict, notFound, unauthorized } from '../http/errors';
+import { normalizeKenyanPhone } from '../auth/phone';
+import type { RiderEarnings, RiderRecord, RiderRepo, VehicleType } from './repo';
 
 /** The acting principal (from req.principal). Resolved to a DB user id for the audit trail. */
 export interface Actor {
@@ -13,6 +14,8 @@ export interface RiderSummary {
   status: RiderRecord['status'];
   vehicleType: VehicleType;
   isOnline: boolean;
+  /** M-Pesa withdrawal destination; null = earnings pay out to the sign-in number. */
+  payoutPhoneE164: string | null;
 }
 
 export interface RiderServiceDeps {
@@ -26,6 +29,7 @@ function toSummary(r: RiderRecord): RiderSummary {
     status: r.status,
     vehicleType: r.vehicleType,
     isOnline: r.isOnline,
+    payoutPhoneE164: r.payoutPhoneE164,
   };
 }
 
@@ -134,7 +138,42 @@ export function createRiderService(deps: RiderServiceDeps) {
     return toSummary(rider);
   }
 
-  return { applyAsRider, approveRider, suspendRider, getOwnRider };
+  /** The caller's lifetime earnings from completed deliveries (Σ rider fee over `delivered`). */
+  async function getOwnEarnings(actor: Actor): Promise<RiderEarnings> {
+    const userId = await requireUserId(actor);
+    return repo.getEarnings(userId);
+  }
+
+  /** The rider sets their own M-Pesa withdrawal number (normalised to E.164). */
+  async function setPayoutDestination(actor: Actor, phone: string): Promise<RiderSummary> {
+    const userId = await requireUserId(actor);
+    const rider = await repo.findRiderByUserId(userId);
+    if (!rider) {
+      throw notFound('Rider profile not found');
+    }
+    const phoneE164 = normalizeKenyanPhone(phone);
+    if (phoneE164 === null) {
+      throw badRequest('Invalid phone number', [{ field: 'phone', issue: 'not a Kenyan mobile' }]);
+    }
+    await repo.setPayoutPhone(userId, phoneE164);
+    await audit(
+      actor,
+      'rider.payout_destination.set',
+      userId,
+      { payoutPhoneE164: rider.payoutPhoneE164 },
+      { payoutPhoneE164: phoneE164 },
+    );
+    return toSummary({ ...rider, payoutPhoneE164: phoneE164 });
+  }
+
+  return {
+    applyAsRider,
+    approveRider,
+    suspendRider,
+    getOwnRider,
+    getOwnEarnings,
+    setPayoutDestination,
+  };
 }
 
 export type RiderService = ReturnType<typeof createRiderService>;

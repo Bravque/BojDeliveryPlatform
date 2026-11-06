@@ -16,6 +16,7 @@ const applySchema = z.object({
   vehicleType: z.enum(['motorbike', 'bicycle', 'car', 'foot']),
 });
 const suspendSchema = z.object({ reason: z.string().min(1).max(255) });
+const payoutDestinationSchema = z.object({ phone: z.string().min(1).max(20) });
 const pingSchema = z.object({
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
@@ -47,6 +48,26 @@ export function riderRouter(riderService: RiderService, requireAuth: RequestHand
     requireAuth,
     asyncHandler(async (req, res) => {
       res.status(200).json(await riderService.getOwnRider(actorOf(req)));
+    }),
+  );
+
+  // Earnings + payout destination are for approved riders (they have the global `rider` role).
+  const riderOnly: RequestHandler[] = [requireAuth, requireRole('rider')];
+
+  router.get(
+    '/rider/earnings',
+    ...riderOnly,
+    asyncHandler(async (req, res) => {
+      res.status(200).json(await riderService.getOwnEarnings(actorOf(req)));
+    }),
+  );
+
+  router.post(
+    '/rider/payout-destination',
+    ...riderOnly,
+    asyncHandler(async (req, res) => {
+      const { phone } = payoutDestinationSchema.parse(req.body ?? {});
+      res.status(200).json(await riderService.setPayoutDestination(actorOf(req), phone));
     }),
   );
 
